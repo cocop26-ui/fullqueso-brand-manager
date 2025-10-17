@@ -18,6 +18,10 @@ ui-debug.log
 pubsub-debug.log
 firebase.json
 
+# Firebase config files with real credentials (NEVER commit these!)
+**/firebase-config.js
+!**/firebase-config.example.js
+
 # Service account keys (NEVER commit these!)
 **/serviceAccountKey*.json
 **/*-firebase-adminsdk-*.json

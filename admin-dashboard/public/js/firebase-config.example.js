@@ -1,7 +1,6 @@
-// Firebase Configuration
-// IMPORTANT: Replace these placeholder values with your actual Firebase config
-// You can find these in Firebase Console > Project Settings > General > Your apps
-// DO NOT commit real values to version control!
+// Firebase Configuration Example
+// Copy this file to firebase-config.js and replace with your actual values
+// NEVER commit firebase-config.js with real credentials!
 
 const firebaseConfig = {
   apiKey: "YOUR_FIREBASE_API_KEY",
