@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full Queso Admin - Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="dashboard-page">
+    <!-- Header -->
+    <header class="dashboard-header">
+        <div class="header-content">
+            <h1>Full Queso Admin</h1>
+            <div class="header-actions">
+                <span id="userEmail" class="user-email"></span>
+                <button id="logoutButton" class="btn btn-secondary btn-sm">Cerrar Sesión</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
+                <a href="#clientes" class="nav-link active" data-section="clientes">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Clientes</span>
+                </a>
+                <a href="#pedidos" class="nav-link" data-section="pedidos">
+                    <span class="nav-icon">📦</span>
+                    <span class="nav-text">Pedidos</span>
+                </a>
+                <a href="#conversaciones" class="nav-link" data-section="conversaciones">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">Conversaciones</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Clientes Section -->
+            <section id="clientes-section" class="content-section active">
+                <div class="section-header">
+                    <h2>Clientes</h2>
+                    <div class="section-actions">
+                        <input type="text" id="searchClientes" class="search-input" placeholder="Buscar cliente...">
+                        <button id="exportClientes" class="btn btn-secondary btn-sm">Exportar CSV</button>
+                    </div>
+                </div>
+
+                <div class="stats-container">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Clientes</div>
+                        <div class="stat-value" id="totalClientes">0</div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Teléfono</th>
+                                <th>Nombre</th>
+                                <th>Cédula</th>
+                                <th>Dirección</th>
+                                <th>Total Pedidos</th>
+                                <th>Último Pedido</th>
+                                <th>Horario Preferido</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientesTableBody">
+                            <tr>
+                                <td colspan="7" class="loading">Cargando datos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Pedidos Section -->
+            <section id="pedidos-section" class="content-section">
+                <div class="section-header">
+                    <h2>Pedidos</h2>
+                    <div class="section-actions">
+                        <input type="text" id="searchPedidos" class="search-input" placeholder="Buscar pedido...">
+                        <select id="filterEstado" class="filter-select">
+                            <option value="">Todos los estados</option>
+                            <option value="VERIFICADO">Verificado</option>
+                            <option value="ENTREGADO">Entregado</option>
+                            <option value="PENDIENTE">Pendiente</option>
+                        </select>
+                        <button id="exportPedidos" class="btn btn-secondary btn-sm">Exportar CSV</button>
+                    </div>
+                </div>
+
+                <div class="stats-container">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Pedidos</div>
+                        <div class="stat-value" id="totalPedidos">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Verificados</div>
+                        <div class="stat-value" id="pedidosVerificados">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Entregados</div>
+                        <div class="stat-value" id="pedidosEntregados">0</div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Ticket</th>
+                                <th>Cliente</th>
+                                <th>Productos</th>
+                                <th>Tipo</th>
+                                <th>Total</th>
+                                <th>Fecha</th>
+                                <th>Estado</th>
+                                <th>Seguimiento</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pedidosTableBody">
+                            <tr>
+                                <td colspan="8" class="loading">Cargando datos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Conversaciones Section -->
+            <section id="conversaciones-section" class="content-section">
+                <div class="section-header">
+                    <h2>Conversaciones de Anajensy</h2>
+                    <div class="section-actions">
+                        <input type="text" id="searchConversaciones" class="search-input" placeholder="Buscar conversación...">
+                        <select id="filterSentimiento" class="filter-select">
+                            <option value="">Todos los sentimientos</option>
+                            <option value="positivo">Positivo</option>
+                            <option value="neutral">Neutral</option>
+                            <option value="negativo">Negativo</option>
+                        </select>
+                        <button id="exportConversaciones" class="btn btn-secondary btn-sm">Exportar CSV</button>
+                    </div>
+                </div>
+
+                <div class="stats-container">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Conversaciones</div>
+                        <div class="stat-value" id="totalConversaciones">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Requieren Atención</div>
+                        <div class="stat-value warning" id="conversacionesAtencion">0</div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Cliente</th>
+                                <th>Pedido</th>
+                                <th>Mensaje Ana</th>
+                                <th>Mensaje Cliente</th>
+                                <th>Tipo</th>
+                                <th>Sentimiento</th>
+                                <th>Atención</th>
+                            </tr>
+                        </thead>
+                        <tbody id="conversacionesTableBody">
+                            <tr>
+                                <td colspan="8" class="loading">Cargando datos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- App Scripts -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

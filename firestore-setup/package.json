@@ -1,0 +1,12 @@
+{
+  "name": "fullqueso-bot-setup",
+  "version": "1.0.0",
+  "description": "Setup Firestore collections for Anajensy bot",
+  "main": "init-firestore.js",
+  "scripts": {
+    "setup": "node init-firestore.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}
