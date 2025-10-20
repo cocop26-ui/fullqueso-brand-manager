@@ -2,20 +2,17 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 const Anthropic = require("@anthropic-ai/sdk");
-const twilio = require("twilio");
+const axios = require("axios");
 
 admin.initializeApp();
 
 // Configuración
 const CLAUDE_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-// Twilio Configuration
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER; // e.g., 'whatsapp:+14155238886'
-
-// Initialize Twilio client
-const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+// Meta WhatsApp Configuration
+const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+const WHATSAPP_API_VERSION = "v21.0"; // Meta Graph API version
 
 // Prompt de Anajensy
 const ANAJENSY_PROMPT = `Eres Anajensy (Ana), operadora de delivery de Full Queso en Caracas, Venezuela. 
@@ -46,7 +43,7 @@ Tu objetivo es confirmar que todo está bien con el pedido.`;
 
 exports.procesarSeguimientos = onSchedule({
   schedule: "every 1 minutes",
-  secrets: ["ANTHROPIC_API_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_NUMBER"]
+  secrets: ["ANTHROPIC_API_KEY", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN"]
 }, async (event) => {
   const db = admin.firestore();
   const ahora = new Date();
@@ -146,30 +143,43 @@ async function enviarWhatsApp(telefono, mensaje) {
     // Format phone number for Venezuela (+58)
     // Remove leading 0 if present and add country code
     const telefonoLimpio = telefono.replace(/^0/, "");
-    const telefonoInternacional = `+58${telefonoLimpio}`;
-    const whatsappNumber = `whatsapp:${telefonoInternacional}`;
+    const telefonoInternacional = `58${telefonoLimpio}`; // Meta API requires number without + sign
 
-    console.log(`Sending WhatsApp to: ${whatsappNumber}`);
+    console.log(`Sending WhatsApp to: +${telefonoInternacional}`);
 
-    // Send message via Twilio
-    const message = await twilioClient.messages.create({
-      body: mensaje,
-      from: TWILIO_WHATSAPP_NUMBER,
-      to: whatsappNumber,
-    });
+    // Send message via Meta WhatsApp Cloud API
+    const url = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
-    console.log(`✓ WhatsApp sent successfully!`);
-    console.log(`  - Message SID: ${message.sid}`);
-    console.log(`  - To: ${whatsappNumber}`);
-    console.log(`  - Status: ${message.status}`);
+    const response = await axios.post(
+      url,
+      {
+        messaging_product: "whatsapp",
+        to: telefonoInternacional,
+        type: "text",
+        text: {
+          body: mensaje
+        }
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
-    return message;
+    console.log(`✓ WhatsApp sent successfully via Meta!`);
+    console.log(`  - Message ID: ${response.data.messages[0].id}`);
+    console.log(`  - To: +${telefonoInternacional}`);
+    console.log(`  - Status: sent`);
+
+    return response.data;
   } catch (error) {
-    console.error("❌ Error sending WhatsApp:", error);
+    console.error("❌ Error sending WhatsApp via Meta:", error);
     console.error("Error details:", {
       message: error.message,
-      code: error.code,
-      moreInfo: error.moreInfo,
+      response: error.response?.data,
+      status: error.response?.status,
     });
     throw error;
   }
