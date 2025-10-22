@@ -49,6 +49,8 @@ exports.procesarSeguimientos = onSchedule({
   const ahora = new Date();
   const hace0Sec = new Date(ahora.getTime() - 0 * 1000); // 0 seconds delay
 
+  console.log(`🔍 Buscando pedidos... timestamp límite: ${hace0Sec.toISOString()}`);
+
   try {
     const pedidosSnapshot = await db.collection("pedidos_bot")
         .where("estado", "==", "VERIFICADO")
@@ -140,10 +142,19 @@ Escribe mensaje de seguimiento para confirmar que el pedido está OK.`;
 
 async function enviarWhatsApp(telefono, mensaje) {
   try {
-    // Format phone number for Venezuela (+58)
-    // Remove leading 0 if present and add country code
-    const telefonoLimpio = telefono.replace(/^0/, "");
-    const telefonoInternacional = `58${telefonoLimpio}`; // Meta API requires number without + sign
+    // Format phone number - Meta API requires number WITH country code, WITHOUT + sign
+    let telefonoInternacional;
+
+    // Check if number already has country code (starts with digits like 1, 58, etc)
+    if (/^[1-9]\d{10,14}$/.test(telefono)) {
+      // Already has country code (e.g., 15556406840, 584241476758)
+      telefonoInternacional = telefono;
+    } else {
+      // Venezuelan number without country code (e.g., 04241476758)
+      // Remove leading 0 and add Venezuela country code (58)
+      const telefonoLimpio = telefono.replace(/^0/, "");
+      telefonoInternacional = `58${telefonoLimpio}`;
+    }
 
     console.log(`Sending WhatsApp to: +${telefonoInternacional}`);
 
