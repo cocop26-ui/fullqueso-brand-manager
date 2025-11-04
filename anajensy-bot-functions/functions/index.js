@@ -375,7 +375,15 @@ exports.whatsappWebhook = onRequest({
 
 Mensaje del cliente: "${messageBody}"
 
-Responde como Anajensy de manera natural y servicial. Si el cliente pregunta por su pedido, tranquilízalo. Si tiene un problema, ofrece ayuda. Mantén el tono cálido y maternal.`;
+IMPORTANTE - RESPUESTA DE SERVICIO AL CLIENTE:
+1. Agradece el feedback del cliente
+2. Si hay comentarios positivos, celebra y agradece su preferencia
+3. Si hay sugerencias o quejas, muestra empatía: "Vamos a tomar todo en cuenta para mejorar el servicio"
+4. Pregunta si tiene alguna otra recomendación
+5. Si aún no tienes su email, pregunta: "¿Puedes enviarnos tu email para enviarte promociones exclusivas?"
+6. Cierre: "Estamos para servirte" o similar
+
+Mantén el tono venezolano cálido de Ana. Responde de forma natural y empática como agente de servicio al cliente.`;
 
     const anthropic = new Anthropic({
       apiKey: CLAUDE_API_KEY,
@@ -421,6 +429,19 @@ Responde como Anajensy de manera natural y servicial. Si el cliente pregunta por
     const sentimentAnalysis = await analyzeSentiment(messageBody, anthropic);
     console.log("Sentiment analysis:", sentimentAnalysis);
 
+    // Get order information for comprehensive survey
+    let pedidoInfo = null;
+    if (!pedidosSnapshot.empty) {
+      const pedidoDoc = pedidosSnapshot.docs[0];
+      pedidoInfo = {
+        pedido_id: pedidoDoc.id,
+        ticket: pedidoDoc.data().ticket,
+        productos: pedidoDoc.data().productos,
+        tipo: pedidoDoc.data().tipo,
+        fecha_verificado: pedidoDoc.data().fecha_verificado,
+      };
+    }
+
     // Save conversation to database with feedback
     await db.collection("conversaciones_bot").add({
       cliente_telefono: clientPhone,
@@ -436,6 +457,80 @@ Responde como Anajensy de manera natural y servicial. Si el cliente pregunta por
       es_cliente_frecuente: sentimentAnalysis.clienteFrecuente,
       observaciones: sentimentAnalysis.observaciones,
     });
+
+    // Save comprehensive survey data
+    await db.collection("encuestas_postventa").add({
+      // Customer data
+      cliente_telefono: clientPhone,
+      cliente_nombre: clienteNombre,
+      cliente_email: null, // Will be updated when customer provides email
+
+      // Order data
+      pedido_id: pedidoInfo?.pedido_id || null,
+      pedido_ticket: pedidoInfo?.ticket || null,
+      pedido_productos: pedidoInfo?.productos || [],
+      pedido_tipo: pedidoInfo?.tipo || null,
+      pedido_fecha: pedidoInfo?.fecha_verificado || null,
+      pedido_hora: pedidoInfo?.fecha_verificado ?
+        new Date(pedidoInfo.fecha_verificado.toDate()).toLocaleTimeString('es-VE') : null,
+
+      // Survey responses
+      respuesta_completa: messageBody,
+      sentimiento_producto: sentimentAnalysis.producto,
+      sentimiento_delivery: sentimentAnalysis.delivery,
+      sentimiento_general: sentimentAnalysis.producto === "positivo" &&
+                          sentimentAnalysis.delivery === "positivo" ? "positivo" :
+                          sentimentAnalysis.producto === "negativo" ||
+                          sentimentAnalysis.delivery === "negativo" ? "negativo" : "regular",
+
+      // Suggestions and feedback
+      sugerencias: sentimentAnalysis.observaciones,
+      producto_favorito: null, // Will be extracted from conversation
+      areas_mejora: sentimentAnalysis.delivery === "negativo" ||
+                   sentimentAnalysis.delivery === "regular" ?
+                   ["Delivery"] : [],
+
+      // Customer relationship
+      es_cliente_frecuente: sentimentAnalysis.clienteFrecuente,
+      total_pedidos: clienteDoc.exists ? clienteDoc.data().total_pedidos : 1,
+
+      // Metadata
+      fecha_encuesta: admin.firestore.Timestamp.now(),
+      encuesta_completada: false, // True when email is provided
+      respuesta_ana: mensajeAna,
+    });
+
+    console.log("✓ Survey data saved to encuestas_postventa");
+
+    // Check if message contains email and update customer profile
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+    const emailMatch = messageBody.match(emailRegex);
+
+    if (emailMatch) {
+      const email = emailMatch[0];
+      console.log(`✓ Email detected: ${email}`);
+
+      // Update customer profile with email
+      await db.collection("clientes_bot").doc(clientPhone).set({
+        email: email,
+        email_capturado_fecha: admin.firestore.Timestamp.now(),
+      }, {merge: true});
+
+      // Update most recent survey with email
+      const surveysSnapshot = await db.collection("encuestas_postventa")
+          .where("cliente_telefono", "==", clientPhone)
+          .orderBy("fecha_encuesta", "desc")
+          .limit(1)
+          .get();
+
+      if (!surveysSnapshot.empty) {
+        await surveysSnapshot.docs[0].ref.update({
+          cliente_email: email,
+          encuesta_completada: true,
+        });
+        console.log("✓ Survey marked as completed with email");
+      }
+    }
 
     // Respond to Twilio webhook (200 OK)
     res.status(200).send("OK");
