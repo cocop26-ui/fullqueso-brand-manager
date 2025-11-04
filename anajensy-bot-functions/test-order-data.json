@@ -1,0 +1,21 @@
+{
+  "ticket": "TEST-001",
+  "pedido_id": "test_order_123",
+  "cliente_telefono": "584141476758",
+  "cliente_nombre": "Test Customer",
+  "productos": [
+    {
+      "nombre": "15 CHURROS + topping de Chocolate",
+      "cantidad": 1
+    },
+    {
+      "nombre": "Café Latte",
+      "cantidad": 1
+    }
+  ],
+  "tipo": "delivery",
+  "ubicacion": "La Florida, Caracas",
+  "estado": "VERIFICADO",
+  "fecha_verificado": "2025-10-31T10:00:00Z",
+  "seguimiento_enviado": false
+}

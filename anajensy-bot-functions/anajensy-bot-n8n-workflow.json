@@ -1,0 +1,450 @@
+{
+  "name": "Anajensy Follow-up Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 1 Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "query",
+        "projectId": "anajensy-n8n",
+        "collectionName": "pedidos_bot",
+        "queryType": "structured",
+        "filters": {
+          "filters": [
+            {
+              "field": "estado",
+              "operator": "equal",
+              "value": "VERIFICADO"
+            },
+            {
+              "field": "seguimiento_enviado",
+              "operator": "equal",
+              "value": "false"
+            },
+            {
+              "field": "fecha_verificado",
+              "operator": "lessThanOrEqual",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "id": "query-orders",
+      "name": "Query Verified Orders",
+      "type": "n8n-nodes-base.googleFirestore",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Anajensy Bot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "split-out",
+      "name": "Split Out Orders",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "projectId": "anajensy-n8n",
+        "collectionName": "clientes_bot",
+        "documentId": "={{ $json.cliente_telefono }}",
+        "options": {
+          "continueOnFail": true
+        }
+      },
+      "id": "get-customer",
+      "name": "Get Customer Profile",
+      "type": "n8n-nodes-base.googleFirestore",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Anajensy Bot"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get order data from split loop\nconst pedido = $input.first().json;\n\n// Get customer data from previous node\nconst customerNode = $('Get Customer Profile').first();\nconst clienteData = customerNode ? customerNode.json : null;\n\n// Build customer object with defaults if not found\nconst cliente = clienteData ? clienteData : {\n  nombre: pedido.cliente_nombre,\n  total_pedidos: 1\n};\n\n// Build products string\nconst productosStr = pedido.productos\n  .map(p => p.nombre)\n  .join(\", \");\n\n// Build context message for Claude\nconst contextoCliente = `Cliente: ${cliente.nombre}\nPedido verificado hace 2 minutos: ${productosStr}\nTipo: ${pedido.tipo}\n${cliente.total_pedidos === 1 ? \"ES SU PRIMER PEDIDO\" : `Total pedidos: ${cliente.total_pedidos}`}\n\nEscribe mensaje de seguimiento para confirmar que el pedido está OK.`;\n\n// Return all data needed for next steps\nreturn {\n  pedidoId: pedido._id || pedido.id,\n  pedido: pedido,\n  cliente: cliente,\n  contextoCliente: contextoCliente\n};"
+      },
+      "id": "prepare-context",
+      "name": "Prepare Customer Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "value": "Eres Anajensy (Ana), operadora de delivery de Full Queso en Caracas, Venezuela. \nEres una madre venezolana cálida, empática y servicial.\n\nPERSONALIDAD:\n- Cálida y maternal\n- Empática y atenta\n- Profesional pero cercana\n- Usas español venezolano natural\n\nEXPRESIONES:\n- Saludos: \"Hola, feliz tarde\", \"¿Cómo estás, mi amor?\"\n- Afirmaciones: \"Chévere\", \"Perfecto\", \"Ay, qué bueno\"\n- Apoyo: \"Estamos para servirte\", \"oíste\"\n- Despedidas: \"Hasta luego, feliz tarde\", \"Un abrazo\"\n\nREGLAS:\n1. Mensajes cortos para WhatsApp (2-3 líneas máximo)\n2. Usa el nombre del cliente\n3. Menciona el pedido específico\n4. Pregunta sobre su experiencia\n5. NO uses emojis\n6. NO seas formal\n\nCONTEXTO: El cliente hizo un pedido hace 2 minutos que fue verificado. \nTu objetivo es confirmar que todo está bien con el pedido."
+            }
+          ]
+        }
+      },
+      "id": "ana-prompt",
+      "name": "Ana Personality Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        900,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 300,\n  \"system\": \"{{ $('Ana Personality Prompt').item.json.prompt }}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.contextoCliente }}\"\n    }\n  ]\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "claude-api",
+      "name": "Generate Message (Claude)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic - Claude API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get phone number and generated message\nconst telefono = $('Prepare Customer Context').first().json.pedido.cliente_telefono;\nconst mensajeAna = $json.content[0].text;\n\n// Format phone number for international use\nlet telefonoInternacional;\n\n// Check if number already has country code (starts with digits like 1, 58, etc)\nif (/^[1-9]\\d{10,14}$/.test(telefono)) {\n  // Already has country code (e.g., 15556406840, 584241476758)\n  telefonoInternacional = telefono;\n} else {\n  // Venezuelan number without country code (e.g., 04241476758)\n  // Remove leading 0 and add Venezuela country code (58)\n  const telefonoLimpio = telefono.replace(/^0/, \"\");\n  telefonoInternacional = `58${telefonoLimpio}`;\n}\n\n// Return all data from previous node plus formatted phone and message\nconst previousData = $('Prepare Customer Context').first().json;\n\nreturn {\n  ...previousData,\n  telefonoInternacional: telefonoInternacional,\n  mensajeAna: mensajeAna\n};"
+      },
+      "id": "format-phone",
+      "name": "Format Phone Number",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/805718575964429/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAASJkmRMNrMBPlFCq5TAZBzbeEZAK8CUXLMWY2wQcb2eNXUkQ7QkzmMmuS2voTmV60ZCOo5ZAZBTlS20vfG2acMOipjF0MD1shxuG4bRztt0a5A6poMPZCQiOTUgcY49lgmqgoldnsbPHOLldb41ZA7ouXdEsc4DXijb4P5JDuKOS7xprcpuqHUvYk5vF398luvEmqZAkZBWZCUAb2ZBIbqFTqFjheZBP0Y9ixMyQqV3XQYG8pFVZCgZDZD"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.telefonoInternacional }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"{{ $json.mensajeAna }}\"\n  }\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "send-whatsapp",
+      "name": "Send WhatsApp Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        300
+      ],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "projectId": "anajensy-n8n",
+        "collectionName": "conversaciones_bot",
+        "dataToSend": "defineInNode",
+        "fieldsToSend": {
+          "fields": [
+            {
+              "name": "cliente_telefono",
+              "value": "={{ $json.pedido.cliente_telefono }}"
+            },
+            {
+              "name": "cliente_nombre",
+              "value": "={{ $json.pedido.cliente_nombre }}"
+            },
+            {
+              "name": "pedido_ticket",
+              "value": "={{ $json.pedido.ticket }}"
+            },
+            {
+              "name": "pedido_id",
+              "value": "={{ $json.pedido.pedido_id }}"
+            },
+            {
+              "name": "mensaje_ana",
+              "value": "={{ $json.mensajeAna }}"
+            },
+            {
+              "name": "mensaje_cliente",
+              "value": "=null"
+            },
+            {
+              "name": "fecha",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "tipo_interaccion",
+              "value": "seguimiento_post_verificacion"
+            },
+            {
+              "name": "sentimiento",
+              "value": "neutral"
+            },
+            {
+              "name": "requiere_atencion",
+              "value": "=false"
+            }
+          ]
+        }
+      },
+      "id": "save-conversation",
+      "name": "Save Conversation",
+      "type": "n8n-nodes-base.googleFirestore",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        300
+      ],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Anajensy Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "projectId": "anajensy-n8n",
+        "collectionName": "pedidos_bot",
+        "documentId": "={{ $json.pedidoId }}",
+        "dataToSend": "defineInNode",
+        "fieldsToSend": {
+          "fields": [
+            {
+              "name": "seguimiento_enviado",
+              "value": "=true"
+            },
+            {
+              "name": "seguimiento_fecha",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "id": "update-order",
+      "name": "Update Order Status",
+      "type": "n8n-nodes-base.googleFirestore",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        300
+      ],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Anajensy Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 1 Minute": {
+      "main": [
+        [
+          {
+            "node": "Query Verified Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Verified Orders": {
+      "main": [
+        [
+          {
+            "node": "Split Out Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Orders": {
+      "main": [
+        [
+          {
+            "node": "Get Customer Profile",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ana Personality Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Customer Profile": {
+      "main": [
+        [
+          {
+            "node": "Prepare Customer Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Customer Context": {
+      "main": [
+        [
+          {
+            "node": "Generate Message (Claude)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ana Personality Prompt": {
+      "main": [
+        []
+      ]
+    },
+    "Generate Message (Claude)": {
+      "main": [
+        [
+          {
+            "node": "Format Phone Number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Phone Number": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Message": {
+      "main": [
+        [
+          {
+            "node": "Save Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Conversation": {
+      "main": [
+        [
+          {
+            "node": "Update Order Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-30T15:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,5 +1,6 @@
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onRequest} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const Anthropic = require("@anthropic-ai/sdk");
 const axios = require("axios");
@@ -9,10 +10,10 @@ admin.initializeApp();
 // Configuración
 const CLAUDE_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-// Meta WhatsApp Configuration
-const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-const WHATSAPP_API_VERSION = "v21.0"; // Meta Graph API version
+// Twilio WhatsApp Configuration
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_WHATSAPP_NUMBER = "whatsapp:+15558855791"; // Twilio WhatsApp Business number (tequenosfullqueso)
 
 // Prompt de Anajensy
 const ANAJENSY_PROMPT = `Eres Anajensy (Ana), operadora de delivery de Full Queso en Caracas, Venezuela. 
@@ -43,7 +44,7 @@ Tu objetivo es confirmar que todo está bien con el pedido.`;
 
 exports.procesarSeguimientos = onSchedule({
   schedule: "every 1 minutes",
-  secrets: ["ANTHROPIC_API_KEY", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN"]
+  secrets: ["ANTHROPIC_API_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"]
 }, async (event) => {
   const db = admin.firestore();
   const ahora = new Date();
@@ -114,7 +115,12 @@ Escribe mensaje de seguimiento para confirmar que el pedido está OK.`;
     const mensajeAna = mensaje.content[0].text;
     console.log(`Generated message: ${mensajeAna}`);
 
-    await enviarWhatsApp(pedidoData.cliente_telefono, mensajeAna);
+    await enviarWhatsApp(
+        pedidoData.cliente_telefono,
+        mensajeAna,
+        cliente.nombre,
+        productosStr
+    );
 
     await db.collection("conversaciones_bot").add({
       cliente_telefono: pedidoData.cliente_telefono,
@@ -140,53 +146,57 @@ Escribe mensaje de seguimiento para confirmar que el pedido está OK.`;
   }
 }
 
-async function enviarWhatsApp(telefono, mensaje) {
+async function enviarWhatsApp(telefono, mensaje, clienteNombre, productosStr) {
   try {
-    // Format phone number - Meta API requires number WITH country code, WITHOUT + sign
+    // Format phone number - Twilio requires whatsapp: prefix and + sign
     let telefonoInternacional;
 
     // Check if number already has country code (starts with digits like 1, 58, etc)
     if (/^[1-9]\d{10,14}$/.test(telefono)) {
       // Already has country code (e.g., 15556406840, 584241476758)
-      telefonoInternacional = telefono;
+      telefonoInternacional = `+${telefono}`;
     } else {
       // Venezuelan number without country code (e.g., 04241476758)
       // Remove leading 0 and add Venezuela country code (58)
       const telefonoLimpio = telefono.replace(/^0/, "");
-      telefonoInternacional = `58${telefonoLimpio}`;
+      telefonoInternacional = `+58${telefonoLimpio}`;
     }
 
-    console.log(`Sending WhatsApp to: +${telefonoInternacional}`);
+    console.log(`Sending WhatsApp to: ${telefonoInternacional}`);
 
-    // Send message via Meta WhatsApp Cloud API
-    const url = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+    // Send message via Twilio WhatsApp API using approved template
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
 
     const response = await axios.post(
       url,
+      new URLSearchParams({
+        From: TWILIO_WHATSAPP_NUMBER,
+        To: `whatsapp:${telefonoInternacional}`,
+        ContentSid: "HX81b16f5a9d7af1ee465044e0535ffcb3",
+        ContentVariables: JSON.stringify({
+          "1": clienteNombre || "Cliente",
+          "2": productosStr || "tu pedido"
+        })
+      }),
       {
-        messaging_product: "whatsapp",
-        to: telefonoInternacional,
-        type: "text",
-        text: {
-          body: mensaje
-        }
-      },
-      {
+        auth: {
+          username: TWILIO_ACCOUNT_SID,
+          password: TWILIO_AUTH_TOKEN
+        },
         headers: {
-          "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/x-www-form-urlencoded"
         }
       }
     );
 
-    console.log(`✓ WhatsApp sent successfully via Meta!`);
-    console.log(`  - Message ID: ${response.data.messages[0].id}`);
-    console.log(`  - To: +${telefonoInternacional}`);
-    console.log(`  - Status: sent`);
+    console.log(`✓ WhatsApp sent successfully via Twilio (using template)!`);
+    console.log(`  - Message SID: ${response.data.sid}`);
+    console.log(`  - To: ${telefonoInternacional}`);
+    console.log(`  - Status: ${response.data.status}`);
 
     return response.data;
   } catch (error) {
-    console.error("❌ Error sending WhatsApp via Meta:", error);
+    console.error("❌ Error sending WhatsApp via Twilio:", error);
     console.error("Error details:", {
       message: error.message,
       response: error.response?.data,
@@ -195,3 +205,145 @@ async function enviarWhatsApp(telefono, mensaje) {
     throw error;
   }
 }
+
+// Webhook para recibir mensajes entrantes de WhatsApp
+exports.whatsappWebhook = onRequest({
+  secrets: ["ANTHROPIC_API_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+}, async (req, res) => {
+  const db = admin.firestore();
+
+  try {
+    console.log("📨 Incoming WhatsApp message");
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+
+    // Extract Twilio webhook data
+    const {
+      From: fromNumber,
+      To: toNumber,
+      Body: messageBody,
+      ProfileName: profileName,
+      MessageSid: messageSid,
+    } = req.body;
+
+    // Clean phone number (remove "whatsapp:" prefix)
+    const clientPhone = fromNumber?.replace("whatsapp:", "").replace("+", "");
+
+    if (!clientPhone || !messageBody) {
+      console.error("Missing phone or message body");
+      return res.status(400).send("Missing required fields");
+    }
+
+    console.log(`Message from: ${clientPhone}`);
+    console.log(`Message: ${messageBody}`);
+
+    // Get customer info from database
+    const clienteDoc = await db.collection("clientes_bot")
+        .doc(clientPhone)
+        .get();
+
+    const clienteNombre = clienteDoc.exists ?
+      clienteDoc.data().nombre :
+      profileName || "Cliente";
+
+    // Get recent order for this customer
+    const pedidosSnapshot = await db.collection("pedidos_bot")
+        .where("cliente_telefono", "==", clientPhone)
+        .orderBy("fecha_verificado", "desc")
+        .limit(1)
+        .get();
+
+    let contextoPedido = "";
+    if (!pedidosSnapshot.empty) {
+      const pedido = pedidosSnapshot.docs[0].data();
+      const productosStr = pedido.productos
+          .map((p) => p.nombre)
+          .join(", ");
+      contextoPedido = `\nPedido reciente: ${productosStr} (${pedido.ticket})`;
+    }
+
+    // Get conversation history
+    const conversacionesSnapshot = await db.collection("conversaciones_bot")
+        .where("cliente_telefono", "==", clientPhone)
+        .orderBy("fecha", "desc")
+        .limit(5)
+        .get();
+
+    let historialConversacion = "";
+    if (!conversacionesSnapshot.empty) {
+      historialConversacion = "\n\nHistorial de conversación:\n";
+      conversacionesSnapshot.docs.reverse().forEach((doc) => {
+        const conv = doc.data();
+        if (conv.mensaje_ana) {
+          historialConversacion += `Ana: ${conv.mensaje_ana}\n`;
+        }
+        if (conv.mensaje_cliente) {
+          historialConversacion += `Cliente: ${conv.mensaje_cliente}\n`;
+        }
+      });
+    }
+
+    // Generate response using Claude
+    const contextoCompleto = `Cliente: ${clienteNombre}${contextoPedido}${historialConversacion}
+
+Mensaje del cliente: "${messageBody}"
+
+Responde como Anajensy de manera natural y servicial. Si el cliente pregunta por su pedido, tranquilízalo. Si tiene un problema, ofrece ayuda. Mantén el tono cálido y maternal.`;
+
+    const anthropic = new Anthropic({
+      apiKey: CLAUDE_API_KEY,
+    });
+
+    const respuesta = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 300,
+      system: ANAJENSY_PROMPT,
+      messages: [{
+        role: "user",
+        content: contextoCompleto,
+      }],
+    });
+
+    const mensajeAna = respuesta.content[0].text;
+    console.log(`Generated response: ${mensajeAna}`);
+
+    // Send response via WhatsApp (using freeform message since customer messaged us)
+    const urlTwilio = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+
+    await axios.post(
+        urlTwilio,
+        new URLSearchParams({
+          From: TWILIO_WHATSAPP_NUMBER,
+          To: fromNumber,
+          Body: mensajeAna,
+        }),
+        {
+          auth: {
+            username: TWILIO_ACCOUNT_SID,
+            password: TWILIO_AUTH_TOKEN,
+          },
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+        }
+    );
+
+    console.log("✓ Response sent to customer");
+
+    // Save conversation to database
+    await db.collection("conversaciones_bot").add({
+      cliente_telefono: clientPhone,
+      cliente_nombre: clienteNombre,
+      mensaje_cliente: messageBody,
+      mensaje_ana: mensajeAna,
+      fecha: admin.firestore.Timestamp.now(),
+      tipo_interaccion: "respuesta_cliente",
+      mensaje_sid: messageSid,
+    });
+
+    // Respond to Twilio webhook (200 OK)
+    res.status(200).send("OK");
+  } catch (error) {
+    console.error("Error processing webhook:", error);
+    res.status(500).send("Error");
+  }
+});
