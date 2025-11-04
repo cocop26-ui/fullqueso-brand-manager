@@ -1,0 +1,542 @@
+{
+  "name": "Anajensy WhatsApp Bot - Twilio",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 1 Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://firestore.googleapis.com/v1/projects/fullqueso-bot/databases/(default)/documents:runQuery",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleFirestoreOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "structuredQuery",
+              "value": "={{ JSON.stringify({ \"from\": [{ \"collectionId\": \"pedidos_bot\" }], \"where\": { \"compositeFilter\": { \"op\": \"AND\", \"filters\": [{ \"fieldFilter\": { \"field\": { \"fieldPath\": \"estado\" }, \"op\": \"EQUAL\", \"value\": { \"stringValue\": \"VERIFICADO\" } } }, { \"fieldFilter\": { \"field\": { \"fieldPath\": \"seguimiento_enviado\" }, \"op\": \"EQUAL\", \"value\": { \"booleanValue\": false } } }, { \"fieldFilter\": { \"field\": { \"fieldPath\": \"fecha_verificado\" }, \"op\": \"LESS_THAN_OR_EQUAL\", \"value\": { \"timestampValue\": $now.toISO() } } }] } } }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "query-orders",
+      "name": "Query Verified Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Full Queso Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "id": "split-orders",
+      "name": "Split Out Orders",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://firestore.googleapis.com/v1/projects/fullqueso-bot/databases/(default)/documents/clientes_bot/{{ $json.document.fields.cliente_telefono.stringValue }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleFirestoreOAuth2Api",
+        "options": {
+          "allowUnauthorizedCerts": false
+        }
+      },
+      "id": "get-customer",
+      "name": "Get Customer Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Full Queso Bot"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract order data\nconst order = $input.first().json.document.fields;\nconst customer = $input.all()[1]?.json?.fields || {};\n\n// Build customer name\nconst customerName = customer.nombre?.stringValue || order.cliente_nombre?.stringValue || \"Cliente\";\n\n// Build products string\nconst products = order.productos?.arrayValue?.values || [];\nconst productNames = products.map(p => p.mapValue?.fields?.nombre?.stringValue || \"\").filter(n => n);\nconst productsStr = productNames.join(\", \");\n\n// Get customer stats\nconst totalPedidos = customer.total_pedidos?.integerValue || 1;\nconst isFirstOrder = totalPedidos === 1;\n\n// Build context for Claude\nconst context = `Cliente: ${customerName}\nPedido verificado hace 2 minutos: ${productsStr}\nTipo: ${order.tipo?.stringValue || \"delivery\"}\n${isFirstOrder ? \"ES SU PRIMER PEDIDO\" : `Total pedidos: ${totalPedidos}`}\n\nEscribe mensaje de seguimiento para confirmar que el pedido está OK.`;\n\nreturn [{\n  json: {\n    customerName,\n    productsStr,\n    context,\n    phone: order.cliente_telefono?.stringValue,\n    orderId: $input.first().json.document.name.split('/').pop(),\n    ticket: order.ticket?.stringValue\n  }\n}];"
+      },
+      "id": "prepare-context",
+      "name": "Prepare Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "claude-sonnet-4-20250514"
+            },
+            {
+              "name": "max_tokens",
+              "value": "300"
+            },
+            {
+              "name": "system",
+              "value": "Eres Anajensy (Ana), operadora de delivery de Full Queso en Caracas, Venezuela. Eres una madre venezolana cálida, empática y servicial.\\n\\nPERSONALIDAD:\\n- Cálida y maternal\\n- Empática y atenta\\n- Profesional pero cercana\\n- Usas español venezolano natural\\n\\nEXPRESIONES:\\n- Saludos: \\\"Hola, feliz tarde\\\", \\\"¿Cómo estás, mi amor?\\\"\\n- Afirmaciones: \\\"Chévere\\\", \\\"Perfecto\\\", \\\"Ay, qué bueno\\\"\\n- Apoyo: \\\"Estamos para servirte\\\", \\\"oíste\\\"\\n- Despedidas: \\\"Hasta luego, feliz tarde\\\", \\\"Un abrazo\\\"\\n\\nREGLAS:\\n1. Mensajes cortos para WhatsApp (2-3 líneas máximo)\\n2. Usa el nombre del cliente\\n3. Menciona el pedido específico\\n4. Pregunta sobre su experiencia\\n5. NO uses emojis\\n6. NO seas formal"
+            },
+            {
+              "name": "messages",
+              "value": "={{ JSON.stringify([{role: 'user', content: $json.context}]) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "claude-ai",
+      "name": "Generate Message with Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic - Claude API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "whatsapp:+15558855791"
+            },
+            {
+              "name": "To",
+              "value": "={{ 'whatsapp:+' + ($node['Prepare Context'].json.phone.match(/^[1-9]/) ? $node['Prepare Context'].json.phone : '58' + $node['Prepare Context'].json.phone.replace(/^0/, '')) }}"
+            },
+            {
+              "name": "ContentSid",
+              "value": "HX81b16f5a9d7af1ee465044e0535ffcb3"
+            },
+            {
+              "name": "ContentVariables",
+              "value": "={{ JSON.stringify({\"1\": $node['Prepare Context'].json.customerName, \"2\": $node['Prepare Context'].json.productsStr}) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-whatsapp",
+      "name": "Send WhatsApp via Twilio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 300],
+      "credentials": {
+        "twilioApi": {
+          "id": "REPLACE_WITH_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://firestore.googleapis.com/v1/projects/fullqueso-bot/databases/(default)/documents/conversaciones_bot",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleFirestoreOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "={{ JSON.stringify({ cliente_telefono: {stringValue: $node['Prepare Context'].json.phone}, cliente_nombre: {stringValue: $node['Prepare Context'].json.customerName}, pedido_ticket: {stringValue: $node['Prepare Context'].json.ticket}, mensaje_ana: {stringValue: $node['Generate Message with Claude'].json.content[0].text}, mensaje_cliente: {nullValue: null}, fecha: {timestampValue: $now.toISO()}, tipo_interaccion: {stringValue: 'seguimiento_post_verificacion'}, sentimiento: {stringValue: 'neutral'}, requiere_atencion: {booleanValue: false} }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-conversation",
+      "name": "Save Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 300],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Full Queso Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://firestore.googleapis.com/v1/{{ $node['Query Verified Orders'].json.data[0].document.name }}?updateMask.fieldPaths=seguimiento_enviado&updateMask.fieldPaths=seguimiento_fecha",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleFirestoreOAuth2Api",
+        "method": "PATCH",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "={{ JSON.stringify({ seguimiento_enviado: {booleanValue: true}, seguimiento_fecha: {timestampValue: $now.toISO()} }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-order",
+      "name": "Mark Order as Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 300],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Full Queso Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 600],
+      "webhookId": "anajensy-whatsapp-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Twilio webhook data\nconst body = $input.first().json.body;\n\nconst fromNumber = body.From || \"\";\nconst messageBody = body.Body || \"\";\nconst profileName = body.ProfileName || \"Cliente\";\nconst messageSid = body.MessageSid || \"\";\n\n// Clean phone number\nconst clientPhone = fromNumber.replace(\"whatsapp:\", \"\").replace(\"+\", \"\");\n\nif (!clientPhone || !messageBody) {\n  throw new Error(\"Missing phone or message body\");\n}\n\nreturn [{\n  json: {\n    clientPhone,\n    messageBody,\n    profileName,\n    messageSid,\n    fromNumber\n  }\n}];"
+      },
+      "id": "parse-webhook",
+      "name": "Parse Webhook Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 600]
+    },
+    {
+      "parameters": {
+        "url": "=https://firestore.googleapis.com/v1/projects/fullqueso-bot/databases/(default)/documents/clientes_bot/{{ $json.clientPhone }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleFirestoreOAuth2Api",
+        "options": {}
+      },
+      "id": "get-customer-webhook",
+      "name": "Get Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 600],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Full Queso Bot"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://firestore.googleapis.com/v1/projects/fullqueso-bot/databases/(default)/documents:runQuery",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleFirestoreOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "structuredQuery",
+              "value": "={{ JSON.stringify({ \"from\": [{ \"collectionId\": \"pedidos_bot\" }], \"where\": { \"fieldFilter\": { \"field\": { \"fieldPath\": \"cliente_telefono\" }, \"op\": \"EQUAL\", \"value\": { \"stringValue\": $node['Parse Webhook Data'].json.clientPhone } } }, \"orderBy\": [{ \"field\": { \"fieldPath\": \"fecha_verificado\" }, \"direction\": \"DESCENDING\" }], \"limit\": 1 }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-recent-order",
+      "name": "Get Recent Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 600],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Full Queso Bot"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://firestore.googleapis.com/v1/projects/fullqueso-bot/databases/(default)/documents:runQuery",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleFirestoreOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "structuredQuery",
+              "value": "={{ JSON.stringify({ \"from\": [{ \"collectionId\": \"conversaciones_bot\" }], \"where\": { \"fieldFilter\": { \"field\": { \"fieldPath\": \"cliente_telefono\" }, \"op\": \"EQUAL\", \"value\": { \"stringValue\": $node['Parse Webhook Data'].json.clientPhone } } }, \"orderBy\": [{ \"field\": { \"fieldPath\": \"fecha\" }, \"direction\": \"DESCENDING\" }], \"limit\": 5 }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-history",
+      "name": "Get Conversation History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 600],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Full Queso Bot"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build context for AI response\nconst webhookData = $node['Parse Webhook Data'].json;\nconst customerData = $node['Get Customer'].json?.fields || {};\nconst orderData = $node['Get Recent Order'].json?.data?.[0]?.document?.fields || {};\nconst history = $node['Get Conversation History'].json?.data || [];\n\nconst customerName = customerData.nombre?.stringValue || webhookData.profileName;\n\n// Build order context\nlet orderContext = \"\";\nif (orderData.productos) {\n  const products = orderData.productos.arrayValue?.values || [];\n  const productNames = products.map(p => p.mapValue?.fields?.nombre?.stringValue).filter(n => n);\n  const productsStr = productNames.join(\", \");\n  const ticket = orderData.ticket?.stringValue || \"\";\n  orderContext = `\\nPedido reciente: ${productsStr} (${ticket})`;\n}\n\n// Build conversation history\nlet conversationHistory = \"\";\nif (history.length > 0) {\n  conversationHistory = \"\\n\\nHistorial de conversación:\\n\";\n  history.reverse().forEach(conv => {\n    const fields = conv.document?.fields || {};\n    if (fields.mensaje_ana?.stringValue) {\n      conversationHistory += `Ana: ${fields.mensaje_ana.stringValue}\\n`;\n    }\n    if (fields.mensaje_cliente?.stringValue) {\n      conversationHistory += `Cliente: ${fields.mensaje_cliente.stringValue}\\n`;\n    }\n  });\n}\n\nconst context = `Cliente: ${customerName}${orderContext}${conversationHistory}\n\nMensaje del cliente: \"${webhookData.messageBody}\"\n\nResponde como Anajensy de manera natural y servicial. Si el cliente pregunta por su pedido, tranquilízalo. Si tiene un problema, ofrece ayuda. Mantén el tono cálido y maternal.`;\n\nreturn [{\n  json: {\n    context,\n    customerName,\n    ...webhookData\n  }\n}];"
+      },
+      "id": "build-context",
+      "name": "Build AI Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "claude-sonnet-4-20250514"
+            },
+            {
+              "name": "max_tokens",
+              "value": "300"
+            },
+            {
+              "name": "system",
+              "value": "Eres Anajensy (Ana), operadora de delivery de Full Queso en Caracas, Venezuela. Eres una madre venezolana cálida, empática y servicial.\\n\\nPERSONALIDAD:\\n- Cálida y maternal\\n- Empática y atenta\\n- Profesional pero cercana\\n- Usas español venezolano natural\\n\\nEXPRESIONES:\\n- Saludos: \\\"Hola, feliz tarde\\\", \\\"¿Cómo estás, mi amor?\\\"\\n- Afirmaciones: \\\"Chévere\\\", \\\"Perfecto\\\", \\\"Ay, qué bueno\\\"\\n- Apoyo: \\\"Estamos para servirte\\\", \\\"oíste\\\"\\n- Despedidas: \\\"Hasta luego, feliz tarde\\\", \\\"Un abrazo\\\"\\n\\nREGLAS:\\n1. Mensajes cortos para WhatsApp (2-3 líneas máximo)\\n2. Usa el nombre del cliente\\n3. Menciona el pedido específico\\n4. Pregunta sobre su experiencia\\n5. NO uses emojis\\n6. NO seas formal"
+            },
+            {
+              "name": "messages",
+              "value": "={{ JSON.stringify([{role: 'user', content: $json.context}]) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "generate-response",
+      "name": "Generate Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic - Claude API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "whatsapp:+15558855791"
+            },
+            {
+              "name": "To",
+              "value": "={{ $node['Build AI Context'].json.fromNumber }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.content[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 600],
+      "credentials": {
+        "twilioApi": {
+          "id": "REPLACE_WITH_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://firestore.googleapis.com/v1/projects/fullqueso-bot/databases/(default)/documents/conversaciones_bot",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleFirestoreOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "={{ JSON.stringify({ cliente_telefono: {stringValue: $node['Build AI Context'].json.clientPhone}, cliente_nombre: {stringValue: $node['Build AI Context'].json.customerName}, mensaje_cliente: {stringValue: $node['Build AI Context'].json.messageBody}, mensaje_ana: {stringValue: $node['Generate Response'].json.content[0].text}, fecha: {timestampValue: $now.toISO()}, tipo_interaccion: {stringValue: 'respuesta_cliente'}, mensaje_sid: {stringValue: $node['Build AI Context'].json.messageSid} }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-webhook-conversation",
+      "name": "Save Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 600],
+      "credentials": {
+        "googleFirestoreOAuth2Api": {
+          "id": "REPLACE_WITH_FIREBASE_CREDENTIAL_ID",
+          "name": "Firebase - Full Queso Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 600]
+    }
+  ],
+  "connections": {
+    "Every 1 Minute": {
+      "main": [[{ "node": "Query Verified Orders", "type": "main", "index": 0 }]]
+    },
+    "Query Verified Orders": {
+      "main": [[{ "node": "Split Out Orders", "type": "main", "index": 0 }]]
+    },
+    "Split Out Orders": {
+      "main": [[{ "node": "Get Customer Info", "type": "main", "index": 0 }]]
+    },
+    "Get Customer Info": {
+      "main": [[{ "node": "Prepare Context", "type": "main", "index": 0 }]]
+    },
+    "Prepare Context": {
+      "main": [[{ "node": "Generate Message with Claude", "type": "main", "index": 0 }]]
+    },
+    "Generate Message with Claude": {
+      "main": [[{ "node": "Send WhatsApp via Twilio", "type": "main", "index": 0 }]]
+    },
+    "Send WhatsApp via Twilio": {
+      "main": [[{ "node": "Save Conversation", "type": "main", "index": 0 }]]
+    },
+    "Save Conversation": {
+      "main": [[{ "node": "Mark Order as Sent", "type": "main", "index": 0 }]]
+    },
+    "WhatsApp Webhook": {
+      "main": [[{ "node": "Parse Webhook Data", "type": "main", "index": 0 }]]
+    },
+    "Parse Webhook Data": {
+      "main": [[{ "node": "Get Customer", "type": "main", "index": 0 }]]
+    },
+    "Get Customer": {
+      "main": [[{ "node": "Get Recent Order", "type": "main", "index": 0 }]]
+    },
+    "Get Recent Order": {
+      "main": [[{ "node": "Get Conversation History", "type": "main", "index": 0 }]]
+    },
+    "Get Conversation History": {
+      "main": [[{ "node": "Build AI Context", "type": "main", "index": 0 }]]
+    },
+    "Build AI Context": {
+      "main": [[{ "node": "Generate Response", "type": "main", "index": 0 }]]
+    },
+    "Generate Response": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    },
+    "Send Response": {
+      "main": [[{ "node": "Save Conversation", "type": "main", "index": 0 }]]
+    },
+    "Save Conversation": {
+      "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 2,
+  "updatedAt": "2025-11-04T00:00:00.000Z",
+  "versionId": "1"
+}
