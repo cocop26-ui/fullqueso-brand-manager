@@ -29,18 +29,14 @@ async function createTestOrder() {
     console.log('Creating test order for Pedro in fullqueso-bot project...');
 
     const orderData = {
-      ticket: 'FQ-TEST-PEDRO',
+      ticket: 'FQ-TEST-PEDRO-' + Date.now(),
       pedido_id: 'test_pedro_' + Date.now(),
       cliente_telefono: '584241476748',
       cliente_nombre: 'Pedro',
       productos: [
         {
-          nombre: '15 CHURROS + topping de Chocolate',
+          nombre: '20 Tequeños',
           cantidad: 1
-        },
-        {
-          nombre: 'Café Latte',
-          cantidad: 2
         }
       ],
       tipo: 'delivery',
@@ -56,7 +52,7 @@ async function createTestOrder() {
     console.log('  Ticket:', orderData.ticket);
     console.log('  Customer: Pedro');
     console.log('  Phone: +58 424-1476748');
-    console.log('  Products: 15 CHURROS + Chocolate, 2x Café Latte');
+    console.log('  Products: 20 Tequeños');
 
     // Create customer profile
     await db.collection('clientes_bot').doc('584241476748').set({

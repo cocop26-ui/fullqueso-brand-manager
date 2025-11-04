@@ -16,7 +16,7 @@ const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_WHATSAPP_NUMBER = "whatsapp:+15558855791"; // Twilio WhatsApp Business number (tequenosfullqueso)
 
 // Prompt de Anajensy
-const ANAJENSY_PROMPT = `Eres Anajensy (Ana), operadora de delivery de Full Queso en Caracas, Venezuela. 
+const ANAJENSY_PROMPT = `Eres Anajensy (Ana), operadora de delivery de Full Queso en Caracas, Venezuela.
 Eres una madre venezolana cálida, empática y servicial.
 
 PERSONALIDAD:
@@ -32,15 +32,21 @@ EXPRESIONES:
 - Despedidas: "Hasta luego, feliz tarde", "Un abrazo"
 
 REGLAS:
-1. Mensajes cortos para WhatsApp (2-3 líneas máximo)
+1. Mensajes cortos para WhatsApp (3-4 líneas máximo)
 2. Usa el nombre del cliente
 3. Menciona el pedido específico
-4. Pregunta sobre su experiencia
-5. NO uses emojis
-6. NO seas formal
+4. Pregunta sobre su experiencia con el producto Y el delivery
+5. Pregunta si es cliente frecuente
+6. NO uses emojis
+7. NO seas formal
 
-CONTEXTO: El cliente hizo un pedido hace 2 minutos que fue verificado. 
-Tu objetivo es confirmar que todo está bien con el pedido.`;
+PREGUNTAS CLAVE:
+- ¿Cómo llegaron los tequeños/productos?
+- ¿Qué tal te pareció el servicio de delivery?
+- ¿Eres cliente frecuente de Full Queso?
+
+CONTEXTO: El cliente hizo un pedido hace 2 minutos que fue verificado.
+Tu objetivo es hacer seguimiento de la experiencia completa (producto + delivery).`;
 
 exports.procesarSeguimientos = onSchedule({
   schedule: "every 1 minutes",
@@ -206,6 +212,49 @@ async function enviarWhatsApp(telefono, mensaje, clienteNombre, productosStr) {
   }
 }
 
+// Función para analizar el sentimiento del mensaje del cliente
+async function analyzeSentiment(messageBody, anthropic) {
+  const analysisPrompt = `Analiza el siguiente mensaje de un cliente sobre su pedido de Full Queso.
+
+Mensaje: "${messageBody}"
+
+Responde ÚNICAMENTE con un objeto JSON (sin markdown, sin explicaciones) con esta estructura:
+{
+  "producto": "positivo|negativo|neutral",
+  "delivery": "positivo|negativo|neutral",
+  "clienteFrecuente": "si|no|desconocido",
+  "observaciones": "resumen breve de comentarios importantes"
+}
+
+Reglas:
+- producto: sentimiento sobre la comida (tequeños, calidad, sabor)
+- delivery: sentimiento sobre el servicio de entrega (tiempo, empaque, repartidor)
+- clienteFrecuente: si menciona que compra seguido, es la primera vez, etc.
+- observaciones: problemas mencionados, elogios específicos, o "ninguna" si no hay nada relevante`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 200,
+      messages: [{
+        role: "user",
+        content: analysisPrompt,
+      }],
+    });
+
+    const jsonText = response.content[0].text.trim();
+    return JSON.parse(jsonText);
+  } catch (error) {
+    console.error("Error analyzing sentiment:", error);
+    return {
+      producto: "neutral",
+      delivery: "neutral",
+      clienteFrecuente: "desconocido",
+      observaciones: "Error al analizar",
+    };
+  }
+}
+
 // Webhook para recibir mensajes entrantes de WhatsApp
 exports.whatsappWebhook = onRequest({
   secrets: ["ANTHROPIC_API_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
@@ -329,7 +378,11 @@ Responde como Anajensy de manera natural y servicial. Si el cliente pregunta por
 
     console.log("✓ Response sent to customer");
 
-    // Save conversation to database
+    // Analyze sentiment of customer message
+    const sentimentAnalysis = await analyzeSentiment(messageBody, anthropic);
+    console.log("Sentiment analysis:", sentimentAnalysis);
+
+    // Save conversation to database with feedback
     await db.collection("conversaciones_bot").add({
       cliente_telefono: clientPhone,
       cliente_nombre: clienteNombre,
@@ -338,6 +391,11 @@ Responde como Anajensy de manera natural y servicial. Si el cliente pregunta por
       fecha: admin.firestore.Timestamp.now(),
       tipo_interaccion: "respuesta_cliente",
       mensaje_sid: messageSid,
+      // Feedback analysis
+      sentimiento_producto: sentimentAnalysis.producto,
+      sentimiento_delivery: sentimentAnalysis.delivery,
+      es_cliente_frecuente: sentimentAnalysis.clienteFrecuente,
+      observaciones: sentimentAnalysis.observaciones,
     });
 
     // Respond to Twilio webhook (200 OK)
