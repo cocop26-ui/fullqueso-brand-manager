@@ -333,34 +333,50 @@ exports.whatsappWebhook = onRequest({
       clienteDoc.data().nombre :
       profileName || "Cliente";
 
-    // Get recent order for this customer
+    // Get recent order for this customer (without composite index)
     const pedidosSnapshot = await db.collection("pedidos_bot")
         .where("cliente_telefono", "==", clientPhone)
-        .orderBy("fecha_verificado", "desc")
-        .limit(1)
         .get();
+
+    // Sort by fecha_verificado in memory to avoid composite index requirement
+    const pedidos = pedidosSnapshot.docs
+        .map(doc => ({id: doc.id, ...doc.data()}))
+        .sort((a, b) => {
+          const timeA = a.fecha_verificado?.toMillis() || 0;
+          const timeB = b.fecha_verificado?.toMillis() || 0;
+          return timeB - timeA; // desc order
+        });
 
     let contextoPedido = "";
-    if (!pedidosSnapshot.empty) {
-      const pedido = pedidosSnapshot.docs[0].data();
-      const productosStr = pedido.productos
+    let pedidoReciente = null;
+    if (pedidos.length > 0) {
+      pedidoReciente = pedidos[0];
+      const productosStr = pedidoReciente.productos
           .map((p) => p.nombre)
           .join(", ");
-      contextoPedido = `\nPedido reciente: ${productosStr} (${pedido.ticket})`;
+      contextoPedido = `\nPedido reciente: ${productosStr} (${pedidoReciente.ticket})`;
     }
 
-    // Get conversation history
+    // Get conversation history (without composite index)
     const conversacionesSnapshot = await db.collection("conversaciones_bot")
         .where("cliente_telefono", "==", clientPhone)
-        .orderBy("fecha", "desc")
-        .limit(5)
         .get();
 
+    // Sort by fecha in memory and take last 5
+    const conversaciones = conversacionesSnapshot.docs
+        .map(doc => doc.data())
+        .sort((a, b) => {
+          const timeA = a.fecha?.toMillis() || 0;
+          const timeB = b.fecha?.toMillis() || 0;
+          return timeB - timeA; // desc order
+        })
+        .slice(0, 5)
+        .reverse(); // Reverse to show oldest first
+
     let historialConversacion = "";
-    if (!conversacionesSnapshot.empty) {
+    if (conversaciones.length > 0) {
       historialConversacion = "\n\nHistorial de conversación:\n";
-      conversacionesSnapshot.docs.reverse().forEach((doc) => {
-        const conv = doc.data();
+      conversaciones.forEach((conv) => {
         if (conv.mensaje_ana) {
           historialConversacion += `Ana: ${conv.mensaje_ana}\n`;
         }
@@ -429,16 +445,15 @@ Mantén el tono venezolano cálido de Ana. Responde de forma natural y empática
     const sentimentAnalysis = await analyzeSentiment(messageBody, anthropic);
     console.log("Sentiment analysis:", sentimentAnalysis);
 
-    // Get order information for comprehensive survey
+    // Use already fetched order information for comprehensive survey
     let pedidoInfo = null;
-    if (!pedidosSnapshot.empty) {
-      const pedidoDoc = pedidosSnapshot.docs[0];
+    if (pedidoReciente) {
       pedidoInfo = {
-        pedido_id: pedidoDoc.id,
-        ticket: pedidoDoc.data().ticket,
-        productos: pedidoDoc.data().productos,
-        tipo: pedidoDoc.data().tipo,
-        fecha_verificado: pedidoDoc.data().fecha_verificado,
+        pedido_id: pedidoReciente.id,
+        ticket: pedidoReciente.ticket,
+        productos: pedidoReciente.productos,
+        tipo: pedidoReciente.tipo,
+        fecha_verificado: pedidoReciente.fecha_verificado,
       };
     }
 
@@ -516,15 +531,21 @@ Mantén el tono venezolano cálido de Ana. Responde de forma natural y empática
         email_capturado_fecha: admin.firestore.Timestamp.now(),
       }, {merge: true});
 
-      // Update most recent survey with email
+      // Update most recent survey with email (without composite index)
       const surveysSnapshot = await db.collection("encuestas_postventa")
           .where("cliente_telefono", "==", clientPhone)
-          .orderBy("fecha_encuesta", "desc")
-          .limit(1)
           .get();
 
       if (!surveysSnapshot.empty) {
-        await surveysSnapshot.docs[0].ref.update({
+        // Sort in memory and get most recent
+        const surveys = surveysSnapshot.docs
+            .sort((a, b) => {
+              const timeA = a.data().fecha_encuesta?.toMillis() || 0;
+              const timeB = b.data().fecha_encuesta?.toMillis() || 0;
+              return timeB - timeA;
+            });
+
+        await surveys[0].ref.update({
           cliente_email: email,
           encuesta_completada: true,
         });
