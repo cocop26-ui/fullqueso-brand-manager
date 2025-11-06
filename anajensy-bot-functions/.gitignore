@@ -67,3 +67,18 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Firebase service account keys (NEVER commit these!)
+*-firebase-adminsdk-*.json
+service-account*.json
+firebase-config.js
+
+# API keys and secrets
+.secrets
+secrets/
+*.pem
+*.key
+
+# Personal downloads and temporary files
+/Users/*/Downloads/
+*.tmp

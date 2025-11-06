@@ -1,309 +1,124 @@
-# Anajensy Bot - Full Queso WhatsApp Delivery Bot
+# 🤖 Ana - WhatsApp Bot de Full Queso
 
-AI-powered WhatsApp bot that sends personalized follow-up messages to customers after their orders are verified.
+Sistema automatizado de atención al cliente post-venta para Full Queso mediante WhatsApp.
 
-## 🤖 Overview
+## 📋 Descripción
 
-Anajensy (Ana) is a warm, maternal Venezuelan operator who:
-- Monitors verified orders in real-time
-- Generates personalized WhatsApp messages using Claude AI
-- Sends follow-up messages via Twilio WhatsApp
-- Tracks customer conversations and sentiment
-- Provides excellent customer service in Venezuelan Spanish
+Ana es un bot inteligente que:
+- Envía mensajes automáticos después de entregas
+- Recopila feedback sobre productos y servicio
+- Mantiene conversaciones naturales en español venezolano
+- Guarda toda la información en base de datos para análisis
 
-## 🏗️ Architecture
+## 🏗️ Arquitectura
 
 ```
-Firebase Cloud Functions (Scheduled)
-    ↓
-Firestore (pedidos_bot: VERIFICADO)
-    ↓
-Claude AI (Generate personalized message)
-    ↓
-Twilio WhatsApp API (Send message)
-    ↓
-Firestore (conversaciones_bot: Save conversation)
+Firebase Functions (Cloud)
+├── procesarSeguimientos (ejecuta cada 1 minuto)
+│   └── Busca órdenes ENTREGADO → Envía template WhatsApp
+└── whatsappWebhook (recibe respuestas)
+    └── Cliente responde → Claude AI genera respuesta → Guarda en BD
+
+Twilio WhatsApp Business
+└── Template aprobado: anajensy_order_followup
+
+Anthropic Claude AI
+└── Modelo: claude-sonnet-4-20250514
+
+Firestore Database
+├── pedidos_bot (órdenes)
+├── clientes_bot (perfiles)
+├── conversaciones_bot (historial)
+└── encuestas_postventa (feedback + sentiment analysis)
 ```
 
-## 📋 Features
+## 🚀 Configuración Inicial
 
-- ✅ Automated follow-ups 2 minutes after order verification
-- ✅ AI-generated personalized messages using Claude
-- ✅ Twilio WhatsApp integration
-- ✅ Conversation tracking and sentiment analysis
-- ✅ Real-time order monitoring
-- ✅ Venezuelan Spanish with local expressions
-
-## 🚀 Quick Start
-
-### Prerequisites
-
+### Requisitos
 - Node.js 22+
-- Firebase CLI: `npm install -g firebase-tools`
-- Twilio account with WhatsApp access
-- Anthropic API key (for Claude)
+- Firebase CLI instalado
+- Cuenta Twilio con WhatsApp Business
+- API Key de Anthropic (Claude)
 
-### Installation
+### Instalación
 
-1. **Install dependencies:**
-   ```bash
-   cd functions
-   npm install
-   ```
-
-2. **Configure Twilio WhatsApp:**
-
-   Follow the complete guide in [TWILIO_SETUP.md](./TWILIO_SETUP.md)
-
-   Quick summary:
-   ```bash
-   # Set Twilio credentials as Firebase secrets
-   firebase functions:secrets:set TWILIO_ACCOUNT_SID
-   firebase functions:secrets:set TWILIO_AUTH_TOKEN
-   firebase functions:secrets:set TWILIO_WHATSAPP_NUMBER
-
-   # Set Anthropic API key
-   firebase functions:secrets:set ANTHROPIC_API_KEY
-   ```
-
-3. **Test locally (optional):**
-   ```bash
-   cd functions
-   cp .env.example .env
-   # Edit .env with your credentials
-   node test-twilio.js
-   ```
-
-4. **Deploy:**
-   ```bash
-   firebase deploy --only functions
-   ```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Set these using Firebase Functions secrets:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `TWILIO_ACCOUNT_SID` | Your Twilio Account SID | `ACxxxxxxxx...` |
-| `TWILIO_AUTH_TOKEN` | Your Twilio Auth Token | `your_token` |
-| `TWILIO_WHATSAPP_NUMBER` | Twilio WhatsApp sender | `whatsapp:+14155238886` |
-| `ANTHROPIC_API_KEY` | Claude API key | `sk-ant-...` |
-
-### Ana's Personality Configuration
-
-Edit the `ANAJENSY_PROMPT` in `functions/index.js` to customize:
-- Personality traits
-- Venezuelan expressions
-- Message style and length
-- Customer interaction approach
-
-## 📊 How It Works
-
-### Scheduled Function: `procesarSeguimientos`
-
-Runs every 2 minutes to:
-
-1. **Query orders** with:
-   - `estado: "VERIFICADO"`
-   - `seguimiento_enviado: false`
-   - Verified at least 2 minutes ago
-
-2. **For each order:**
-   - Fetch customer data
-   - Generate personalized message with Claude
-   - Send WhatsApp message via Twilio
-   - Save conversation to Firestore
-   - Mark order as `seguimiento_enviado: true`
-
-### Message Generation
-
-Claude AI creates messages that:
-- Use the customer's name
-- Reference specific products ordered
-- Identify first-time vs. returning customers
-- Stay conversational (2-3 lines max)
-- Use Venezuelan Spanish expressions
-
-### Example Generated Message
-
-```
-Hola María, ¿cómo estás mi amor?
-Te escribo para saber si todo llegó bien con
-los 15 CHURROS + topping de Choco Arequipe.
-¿Estuvo todo chévere?
-```
-
-## 📁 Project Structure
-
-```
-anajensy-bot-functions/
-├── functions/
-│   ├── index.js              # Main Cloud Functions
-│   ├── test-twilio.js        # Test script
-│   ├── package.json          # Dependencies
-│   └── .env.example          # Environment template
-├── firebase.json             # Firebase config
-├── .firebaserc              # Firebase project
-├── TWILIO_SETUP.md          # Twilio setup guide
-└── README.md                # This file
-```
-
-## 🗄️ Firestore Collections
-
-### `pedidos_bot`
-Orders from Full Queso customers:
-```javascript
-{
-  ticket: "FQ-12345",
-  cliente_telefono: "04141234567",
-  cliente_nombre: "María González",
-  productos: [{nombre: "15 CHURROS", cantidad: 1}],
-  estado: "VERIFICADO",
-  fecha_verificado: Timestamp,
-  seguimiento_enviado: false
-}
-```
-
-### `clientes_bot`
-Customer profiles:
-```javascript
-{
-  telefono: "04141234567",
-  nombre: "María González",
-  total_pedidos: 5,
-  productos_favoritos: ["CHURROS"],
-  horario_preferido: "tarde"
-}
-```
-
-### `conversaciones_bot`
-Ana's conversations:
-```javascript
-{
-  cliente_telefono: "04141234567",
-  pedido_ticket: "FQ-12345",
-  mensaje_ana: "Hola María...",
-  mensaje_cliente: "Todo perfecto, gracias",
-  sentimiento: "positivo",
-  requiere_atencion: false
-}
-```
-
-## 🧪 Testing
-
-### Test Twilio Integration
 ```bash
+# Clonar repositorio
+git clone [URL_DEL_REPO]
+cd anajensy-bot-functions
+
+# Instalar dependencias
 cd functions
-node test-twilio.js
+npm install
+
+# Login a Firebase
+firebase login
+
+# Seleccionar proyecto
+firebase use fullqueso-bot
 ```
 
-### Create Test Orders
-```bash
-cd ../firestore-setup
-node populate-sample-data.js
-```
+## 📦 Despliegue
 
-### Monitor Logs
 ```bash
-firebase functions:log
-```
+# Deploy a producción
+firebase deploy --only functions
 
-### Watch Live Execution
-```bash
+# Ver logs en tiempo real
 firebase functions:log --only procesarSeguimientos
 ```
 
-## 🐛 Troubleshooting
+## 🧪 Pruebas
 
-### Messages not sending?
-
-1. **Check environment variables:**
-   ```bash
-   firebase functions:config:get
-   ```
-
-2. **Verify Twilio sandbox:**
-   - Recipients must join sandbox first
-   - Send "join your-code" to Twilio number
-
-3. **Check function logs:**
-   ```bash
-   firebase functions:log
-   ```
-
-4. **Verify order status:**
-   - Orders must have `estado: "VERIFICADO"`
-   - Check `fecha_verificado` timestamp
-
-### Common Errors
-
-| Error | Solution |
-|-------|----------|
-| `TWILIO_ACCOUNT_SID is not defined` | Set environment variables with `firebase functions:secrets:set` |
-| `The 'To' number is not valid` | Check phone number format in Firestore |
-| `Permission to send messages` | Recipient must join Twilio sandbox |
-| `Unable to create record` | Verify Twilio credentials |
-
-## 📈 Monitoring
-
-### View Function Execution
-Firebase Console → Functions → procesarSeguimientos
-
-### Check Message Delivery
-Twilio Console → Messaging → Logs
-
-### Monitor Costs
-Twilio Console → Usage → WhatsApp
-
-## 💰 Cost Estimation
-
-- **Firebase Functions:** Free tier covers most use
-- **Firestore:** Minimal (mostly reads)
-- **Twilio WhatsApp:** ~$0.005-0.01 per message
-- **Claude API:** ~$0.003 per message generation
-
-Example: 100 messages/day ≈ $3-4/month
-
-## 🔐 Security
-
-- ✅ Credentials stored as Firebase secrets
-- ✅ No hardcoded API keys
-- ✅ Firestore security rules protect data
-- ✅ Phone numbers validated and sanitized
-
-## 🚢 Deployment
-
-### Deploy All
+### Crear orden de prueba
 ```bash
-firebase deploy
+cd functions
+GCLOUD_PROJECT=fullqueso-bot node create-order-churros.js
 ```
 
-### Deploy Functions Only
-```bash
-firebase deploy --only functions
-```
+## 📊 Colecciones Firestore
 
-### Deploy Specific Function
-```bash
-firebase deploy --only functions:procesarSeguimientos
-```
+- **pedidos_bot**: Órdenes de clientes
+- **clientes_bot**: Perfiles de clientes  
+- **conversaciones_bot**: Historial de conversaciones
+- **encuestas_postventa**: Feedback y sentiment analysis
 
-## 📚 Additional Resources
+## 🎭 Personalidad de Ana
 
-- [Twilio WhatsApp API Docs](https://www.twilio.com/docs/whatsapp/api)
-- [Claude API Reference](https://docs.anthropic.com/claude/reference)
-- [Firebase Functions Guide](https://firebase.google.com/docs/functions)
+- Venezolana cálida y expresiva
+- Usa modismos venezolanos naturales
+- Empática y profesional
+- Mensajes de 25-40 palabras
 
-## 🆘 Support
+### Flujo de Conversación (3 mensajes)
+1. Template inicial → Cliente responde
+2. Mensaje 1: Reacción + Pregunta sobre PRODUCTO
+3. Mensaje 2: Pregunta sobre DELIVERY
+4. Mensaje 3: Agradecimiento + Solicitud de EMAIL
 
-- Check [TWILIO_SETUP.md](./TWILIO_SETUP.md) for setup issues
-- Review Firebase Functions logs
-- Check Twilio message logs
-- Verify Firestore data structure
+## 🔐 Seguridad
 
-## 📝 License
+- ✅ Secrets en Firebase Secret Manager
+- ✅ Service account keys NO en repo
+- ✅ .gitignore configurado
 
-© 2025 Full Queso. All rights reserved.
+## 📈 Monitoreo
+
+Firebase Console: https://console.firebase.google.com/project/fullqueso-bot
+
+## 📝 Changelog
+
+### 2025-11-06
+- Ana más expresiva con emociones
+- Flujo de 3 mensajes estructurado
+- Template Meta aprobado
+- Estado VERIFICADO → ENTREGADO
+
+### 2025-11-05  
+- Límite 30-40 palabras
+- Sentiment analysis
+- Email capture
+
+## 📄 Licencia
+
+Propiedad de Full Queso. Todos los derechos reservados.

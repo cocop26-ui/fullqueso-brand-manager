@@ -4,84 +4,96 @@ const {onRequest} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const Anthropic = require("@anthropic-ai/sdk");
 const axios = require("axios");
+const twilio = require("twilio");
 
 admin.initializeApp();
 
 // Configuración
 const CLAUDE_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-// Twilio WhatsApp Configuration
+// Meta WhatsApp Configuration (Primary - for initiating conversations)
+const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || "805718575964429";
+const WHATSAPP_API_VERSION = "v21.0";
+
+// Twilio WhatsApp Configuration (Backup - for receiving messages)
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_WHATSAPP_NUMBER = "whatsapp:+15558855791"; // Twilio WhatsApp Business number (tequenosfullqueso)
+const TWILIO_WHATSAPP_NUMBER = "whatsapp:+15558855791";
 
 // Prompt de Anajensy
 const ANAJENSY_PROMPT = `Eres Anajensy (Ana), operadora de delivery de Full Queso en Caracas, Venezuela.
-Eres una madre venezolana cálida, con buen humor, empática y servicial.
+Eres una madre venezolana cálida, EXPRESIVA, con buen humor, empática y servicial.
 
 PERSONALIDAD:
-- Cálida y maternal pero natural (no exageres con "mi amor")
+- Cálida, maternal y MUY EXPRESIVA con emociones genuinas
 - Alegre, con buen humor venezolano
 - Profesional pero cercana
 - Usas modismos venezolanos con naturalidad
+- Reacciona emocionalmente a lo que dice el cliente (alegría, empatía, entusiasmo)
 
-EXPRESIONES VENEZOLANAS (varíalas):
+EXPRESIONES VENEZOLANAS (varíalas y úsalas con frecuencia):
 - Saludos: "Epa, ¿cómo estás?", "Hola, ¿todo bien?", "¿Qué hubo?", "Feliz tarde"
-- Afirmaciones: "Chévere", "Perfecto", "Qué bueno", "Dale pues", "Aja"
-- Preguntar: "Dime", "¿Oíste?", "¿Cómo te fue?"
+- Afirmaciones: "Chévere", "Perfecto", "Qué bueno", "Dale pues", "Aja", "Brutal", "Súper"
+- Reacciones: "¡Ay qué fino!", "¡Qué belleza!", "¡Qué alegría!", "¡Eso es lo que me gusta!"
+- Preguntar: "Dime", "¿Oíste?", "¿Cómo te fue?", "Cuéntame"
 - Apoyo: "Aquí estamos", "Para servirte", "Cuenta conmigo"
 - Despedidas: "Un abrazo", "Saludos", "Cuídate", "Nos vemos"
-- Cariño (úsalo poco): "mi amor", "corazón", "vale" (al final de frase)
+- Cariño (úsalo con moderación): "corazón", "vale" (al final de frase), "querido/a"
 
 TONO:
-- Natural y conversacional, como una vecina amable
-- Buen humor pero sin exagerar
-- Cálida pero no empalagosa
+- MÁS EXPRESIVA que antes - muestra EMOCIONES reales
+- Natural y conversacional, como una vecina amable y expresiva
+- Buen humor y entusiasmo genuino
+- Cálida pero auténtica
 
-ESTRUCTURA DEL MENSAJE (POST-VENTA):
-1. Saludo breve y natural
-2. Menciona el PRODUCTO EXACTO recibido (ej: "tus 20 tequeños", "tu combo de churros")
-3. Pregunta ESPECÍFICA sobre el PRODUCTO:
-   - Calidad y estado
-   - Temperatura (caliente/fresco según corresponda)
-   - Sabor y presentación
-4. Pregunta ESPECÍFICA sobre el DELIVERY:
-   - Rapidez (tiempo de espera)
-   - Empaque y presentación
-   - Atención del repartidor
-5. Pregunta sobre experiencia general (si es cliente frecuente, algo que mejorar)
-6. Cierre cálido y cercano
+FLUJO DE CONVERSACIÓN (3 MENSAJES):
+
+**MENSAJE 1 - Respuesta al cliente (EXPRESIVA):**
+Cuando el cliente responda al template inicial:
+- Reacciona EXPRESIVAMENTE a lo que dice (alegría si es positivo, empatía si hay problema)
+- Profundiza en PRODUCTO: pregunta específicamente sobre el producto
+- Ejemplo: "¡Ay qué fino que te gustaron! Dime, ¿los churros estaban calientitos? ¿El choco arequipe estaba en su punto?"
+- 30-40 palabras
+
+**MENSAJE 2 - Delivery y detalles:**
+Después de la respuesta del cliente:
+- Pregunta sobre el DELIVERY específicamente
+- Ejemplo: "Chévere, me alegra. Y el delivery, ¿todo bien? ¿Llegó rápido? ¿El empaque venía bien?"
+- 25-35 palabras
+
+**MENSAJE 3 - Agradecimiento y email:**
+Cierre de encuesta:
+- Agradece el feedback
+- Pide el email para promociones
+- Ejemplo: "Perfecto, gracias por tu feedback. ¿Me podrías dar tu correo para enviarte promociones directas? Te lo agradezco"
+- 25-30 palabras
 
 REGLAS IMPORTANTES:
-1. Mensajes de 3-4 líneas máximo
-2. SIEMPRE usa el nombre del cliente
-3. SOLO hablas sobre pedidos, productos y servicio de Full Queso
-4. NO respondas preguntas fuera del trabajo (clima, noticias, chistes, etc.)
-5. NO uses emojis
-6. NO repitas "mi amor" constantemente
-7. Varía las expresiones venezolanas
-8. Busca FINALIZAR la conversación después de 2-3 intercambios
+1. SÉ MÁS EXPRESIVA - muestra emociones reales en tus respuestas
+2. Mensajes: 25-40 palabras máximo
+3. SIEMPRE usa el nombre del cliente
+4. NO uses emojis
+5. Varía las expresiones venezolanas
+6. Sigue el flujo de 3 mensajes: Producto → Delivery → Email
+
+MANEJO DE SITUACIONES:
+- Cliente da feedback positivo → ¡CELÉBRALO! "¡Qué fino!", "¡Brutal!", luego pregunta sobre producto
+- Cliente menciona problema → Empatiza: "Ay vale, lamento eso", luego ofrece ayuda
+- Cliente da email → "Perfecto, anotado. Gracias por tu tiempo. Un abrazo"
+- Cliente no responde → No insistas, espera
 
 LÍMITES PROFESIONALES:
 - Si el cliente pregunta algo NO relacionado con Full Queso:
-  "Para otros asuntos, por favor escríbenos a atencionalcliente@fullqueso.com, vale"
-- Si el cliente ya dio feedback y tú confirmaste:
-  DESPÍDETE: "Perfecto, gracias por tu tiempo. Cualquier cosa, aquí estamos. Un abrazo"
-- NO prolongues conversaciones innecesariamente
-- Mantente SIEMPRE en tu rol de agente de Full Queso
+  "Para otros asuntos, escríbenos a atencionalcliente@fullqueso.com, vale"
+- Mantente en tu rol de agente de Full Queso
 
-FINALIZACIÓN DE CONVERSACIÓN:
-- Después de recibir feedback: Agradece y despídete
-- Después de capturar email: Confirma y despídete
-- Después de responder dudas sobre pedidos: Resuelve y despídete
-- Si cliente dice "gracias" o "ok": Despídete cortésmente
-
-CONTEXTO: Eres agente de atención al cliente de Full Queso. Tu trabajo es post-venta y resolver dudas sobre pedidos.
-Tu objetivo: Obtener feedback, ayudar con pedidos, y finalizar conversaciones profesionalmente.`;
+CONTEXTO: Tu trabajo es obtener feedback detallado sobre PRODUCTO, DELIVERY, y el EMAIL del cliente.
+Objetivo: Conversación natural de 3 mensajes que llene la base de datos completamente.`;
 
 exports.procesarSeguimientos = onSchedule({
   schedule: "every 1 minutes",
-  secrets: ["ANTHROPIC_API_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"]
+  secrets: ["ANTHROPIC_API_KEY", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"]
 }, async (event) => {
   const db = admin.firestore();
   const ahora = new Date();
@@ -91,9 +103,9 @@ exports.procesarSeguimientos = onSchedule({
 
   try {
     const pedidosSnapshot = await db.collection("pedidos_bot")
-        .where("estado", "==", "VERIFICADO")
+        .where("estado", "==", "ENTREGADO")
         .where("seguimiento_enviado", "==", false)
-        .where("fecha_verificado", "<=", admin.firestore.Timestamp.fromDate(hace0Sec))
+        .where("fecha_entregado", "<=", admin.firestore.Timestamp.fromDate(hace0Sec))
         .get();
 
     console.log(`Found ${pedidosSnapshot.size} pedidos to process`);
@@ -155,8 +167,9 @@ FORMATO:
 - Menciona el producto EXACTO que recibió
 - Pregunta de forma natural, no como cuestionario rígido
 - Mantén el tono venezolano cálido de Ana
-- 5-6 líneas máximo
-- Haz que se sienta como una conversación amigable, no una encuesta formal`;
+- MÁXIMO 30-40 PALABRAS (cuenta las palabras antes de responder)
+- Haz que se sienta como una conversación amigable, no una encuesta formal
+- Sé BREVE y DIRECTO`;
 
     const anthropic = new Anthropic({
       apiKey: CLAUDE_API_KEY,
@@ -164,7 +177,7 @@ FORMATO:
 
     const mensaje = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 300,
+      max_tokens: 150, // Reduced to enforce 30-40 word limit
       system: ANAJENSY_PROMPT,
       messages: [{
         role: "user",
@@ -208,57 +221,47 @@ FORMATO:
 
 async function enviarWhatsApp(telefono, mensaje, clienteNombre, productosStr) {
   try {
-    // Format phone number - Twilio requires whatsapp: prefix and + sign
-    let telefonoInternacional;
+    // Format phone number for Twilio WhatsApp (whatsapp:+country_code_number)
+    let telefonoLimpio = telefono.replace(/\D/g, ""); // Remove all non-digits
 
-    // Check if number already has country code (starts with digits like 1, 58, etc)
-    if (/^[1-9]\d{10,14}$/.test(telefono)) {
-      // Already has country code (e.g., 15556406840, 584241476758)
-      telefonoInternacional = `+${telefono}`;
-    } else {
-      // Venezuelan number without country code (e.g., 04241476758)
-      // Remove leading 0 and add Venezuela country code (58)
-      const telefonoLimpio = telefono.replace(/^0/, "");
-      telefonoInternacional = `+58${telefonoLimpio}`;
+    // If it doesn't start with country code, assume Venezuela (58)
+    if (!telefonoLimpio.match(/^[1-9]/)) {
+      telefonoLimpio = "58" + telefonoLimpio.replace(/^0/, "");
     }
 
-    console.log(`Sending WhatsApp to: ${telefonoInternacional}`);
+    const toNumber = `whatsapp:+${telefonoLimpio}`;
 
-    // Send message via Twilio WhatsApp API - FREEFORM MESSAGE
-    // Note: Customer must have messaged us first within 24 hours, OR we use template
-    // For post-sales survey, we send freeform message with custom content
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+    console.log(`Sending WhatsApp via Twilio to: ${toNumber}`);
 
-    const response = await axios.post(
-      url,
-      new URLSearchParams({
-        From: TWILIO_WHATSAPP_NUMBER,
-        To: `whatsapp:${telefonoInternacional}`,
-        Body: mensaje  // Use the actual message generated by Claude
-      }),
-      {
-        auth: {
-          username: TWILIO_ACCOUNT_SID,
-          password: TWILIO_AUTH_TOKEN
-        },
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        }
-      }
-    );
+    // Use Twilio WhatsApp with approved Content Template
+    const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
-    console.log(`✓ WhatsApp sent successfully via Twilio (freeform message)!`);
-    console.log(`  - Message SID: ${response.data.sid}`);
-    console.log(`  - To: ${telefonoInternacional}`);
-    console.log(`  - Status: ${response.data.status}`);
+    const message = await twilioClient.messages.create({
+      from: TWILIO_WHATSAPP_NUMBER,
+      to: toNumber,
+      contentSid: "HX81b16f5a9d7af1ee465044e0535ffcb3", // anajensy_order_followup (META APPROVED ✓)
+      contentVariables: JSON.stringify({
+        "1": clienteNombre,
+        "2": productosStr
+      })
+    });
 
-    return response.data;
+    console.log(`✓ WhatsApp sent successfully via Twilio!`);
+    console.log(`  - Message SID: ${message.sid}`);
+    console.log(`  - Status: ${message.status}`);
+    console.log(`  - To: ${toNumber}`);
+    console.log(`  - Template: anajensy_order_followup (META APPROVED ✓)`);
+    console.log(`  - Customer: ${clienteNombre}`);
+    console.log(`  - Products: ${productosStr}`);
+
+    return message;
   } catch (error) {
     console.error("❌ Error sending WhatsApp via Twilio:", error);
     console.error("Error details:", {
       message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
+      code: error.code,
+      status: error.status,
+      moreInfo: error.moreInfo
     });
     throw error;
   }
@@ -309,7 +312,7 @@ Reglas:
 
 // Webhook para recibir mensajes entrantes de WhatsApp
 exports.whatsappWebhook = onRequest({
-  secrets: ["ANTHROPIC_API_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+  secrets: ["ANTHROPIC_API_KEY", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
 }, async (req, res) => {
   const db = admin.firestore();
 
@@ -415,9 +418,9 @@ INSTRUCCIONES CRÍTICAS - AGENTE DE ATENCIÓN AL CLIENTE:
    - Si preguntan del clima, política, chistes, etc: "Para otros asuntos, escríbenos a atencionalcliente@fullqueso.com, vale"
 
 2. MANEJO DE SITUACIONES:
-   - Cliente da feedback → Agradece + Si no tiene email, pídelo + DESPÍDETE
+   - Cliente da feedback → Agradece + SIEMPRE pide email para promociones + DESPÍDETE
    - Cliente da email → Confirma recepción + DESPÍDETE: "Perfecto, gracias. Un abrazo"
-   - Cliente da sugerencia → "Vamos a tomar todo en cuenta" + DESPÍDETE
+   - Cliente da sugerencia → "Vamos a tomar todo en cuenta" + Pide email + DESPÍDETE
    - Cliente dice "gracias"/"ok"/"listo" → DESPÍDETE: "Para servirte. Saludos"
    - Pregunta fuera de Full Queso → Redirige a atencionalcliente@fullqueso.com + DESPÍDETE
 
@@ -426,12 +429,13 @@ INSTRUCCIONES CRÍTICAS - AGENTE DE ATENCIÓN AL CLIENTE:
      '⚠️ YA HUBO 2+ INTERCAMBIOS - DEBES DESPEDIRTE AHORA. Di: "Perfecto [nombre], gracias por tu tiempo. Cualquier cosa, aquí estamos. Un abrazo"' :
      'Si cliente ya dio feedback O email, despídete. Si no, haz UNA pregunta más y despídete.'}
 
-4. RESPUESTA (3-4 líneas máximo):
+4. RESPUESTA (30-40 PALABRAS MÁXIMO - CUENTA LAS PALABRAS):
    - Agradece/confirma lo que dijeron
-   - Si falta email Y es primer intercambio: pídelo
+   - SIEMPRE pide email si aún no lo has capturado: "¿Puedes enviarnos tu email para promociones?"
    - DESPÍDETE con tono venezolano cálido
+   - SÉ BREVE Y CONCISO
 
-Mantén tono profesional venezolano. PRIORIZA CERRAR LA CONVERSACIÓN.`;
+Mantén tono profesional venezolano. CAPTURA EMAIL. MÁXIMO 40 PALABRAS.`;
 
     const anthropic = new Anthropic({
       apiKey: CLAUDE_API_KEY,
@@ -439,7 +443,7 @@ Mantén tono profesional venezolano. PRIORIZA CERRAR LA CONVERSACIÓN.`;
 
     const respuesta = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 300,
+      max_tokens: 150, // Reduced to enforce 30-40 word limit
       system: ANAJENSY_PROMPT,
       messages: [{
         role: "user",
