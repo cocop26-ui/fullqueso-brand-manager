@@ -155,6 +155,38 @@ GCLOUD_PROJECT=fullqueso-bot node restore-firestore.js ./restore/2025-11-06
 
 Ver documentación completa: [BACKUP_GUIDE.md](BACKUP_GUIDE.md)
 
+## 📊 Sistema de KPIs y Analytics
+
+### Tracking Automático
+- **Google Sheets Integration:** Logging en tiempo real de cada interacción
+- **KPIs Medidos:** NPS, CSAT, tiempos de respuesta, tasa de resolución
+- **Sentiment Analysis:** Positivo, neutral, negativo automático
+- **Dashboard Ready:** Preparado para Looker Studio / Google Data Studio
+
+### KPIs Principales
+- **NPS (Net Promoter Score):** Meta > 50
+- **CSAT (Customer Satisfaction):** Meta > 80%
+- **Tiempo Primera Respuesta:** Meta < 30 segundos
+- **Tiempo Resolución:** Meta < 5 minutos
+- **Tasa Resolución sin Escalado:** Meta > 80%
+
+### Configuración
+```bash
+# 1. Crear Google Sheet y obtener ID
+# 2. Compartir con: fullqueso-bot@appspot.gserviceaccount.com
+# 3. Configurar ID
+firebase functions:config:set sheets.spreadsheet_id="YOUR_ID"
+
+# 4. Ejecutar setup
+cd functions
+GCLOUD_PROJECT=fullqueso-bot node setup-sheets.js
+
+# 5. Deploy
+firebase deploy --only functions:whatsappWebhook
+```
+
+Ver documentación completa: [KPI_TRACKING_SYSTEM.md](KPI_TRACKING_SYSTEM.md)
+
 ## 📈 Monitoreo
 
 Firebase Console: https://console.firebase.google.com/project/fullqueso-bot
@@ -162,6 +194,12 @@ Firebase Console: https://console.firebase.google.com/project/fullqueso-bot
 ## 📝 Changelog
 
 ### 2025-11-06
+- ✅ **Sistema de KPIs y Analytics implementado**
+- ✅ Google Sheets integration para tracking en tiempo real
+- ✅ Medición automática de NPS, CSAT, tiempos de respuesta
+- ✅ Sentiment analysis en cada interacción
+- ✅ Dashboard-ready para Looker Studio
+- ✅ Backup automático a Cloud Storage si Sheets falla
 - ✅ Sistema de backup automático implementado
 - ✅ Backup cada domingo a las 2:00 AM
 - ✅ Retención automática de 8 semanas

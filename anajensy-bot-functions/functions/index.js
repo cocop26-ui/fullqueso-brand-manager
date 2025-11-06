@@ -5,6 +5,7 @@ const admin = require("firebase-admin");
 const Anthropic = require("@anthropic-ai/sdk");
 const axios = require("axios");
 const twilio = require("twilio");
+const sheetsLogger = require("./sheets-logger");
 
 admin.initializeApp();
 
@@ -618,6 +619,52 @@ Responde amablemente y redirige:
     });
 
     console.log("✓ Survey data saved to encuestas_postventa");
+
+    // Log to Google Sheets for KPI tracking
+    const conversationStartTime = conversaciones.length > 0 ?
+      conversaciones[0].fecha?.toDate() :
+      new Date();
+
+    const resolutionTime = sheetsLogger.calculateResolutionTime(conversationStartTime);
+    const inquiryType = sheetsLogger.detectInquiryType(messageBody, {
+      hasRecentOrder: !!pedidoReciente,
+      isPostSale: esConversacionPostventa,
+    });
+
+    // Determine resolution status
+    let resolutionStatus = 'en_progreso';
+    if (numInteracciones >= 2 || encuestaCompletada) {
+      resolutionStatus = 'resuelto';
+    } else if (esInicioNuevo && !esConversacionPostventa) {
+      resolutionStatus = 'redirigido';
+    }
+
+    // Generate unique conversation ID
+    const conversationId = `${clientPhone}_${Date.now()}`;
+
+    // Log interaction to sheets
+    await sheetsLogger.logInteraction({
+      conversationId: conversationId,
+      customerPhone: clientPhone,
+      customerName: clienteNombre,
+      orderNumber: pedidoReciente?.ticket || '',
+      inquiryType: inquiryType,
+      customerMessage: messageBody,
+      agentResponse: mensajeAna,
+      sentimentDetected: sentimentAnalysis.producto === 'positivo' &&
+                        sentimentAnalysis.delivery === 'positivo' ? 'positivo' :
+                        sentimentAnalysis.producto === 'negativo' ||
+                        sentimentAnalysis.delivery === 'negativo' ? 'negativo' : 'neutral',
+      resolutionStatus: resolutionStatus,
+      resolutionTimeMinutes: resolutionTime,
+      firstResponseTimeSeconds: 2, // Ana responds in ~2 seconds
+      requiresFollowup: sentimentAnalysis.observaciones.includes('problema') ? 'sí' : 'no',
+      npsScore: null, // Will be updated when customer responds
+      csatScore: null, // Will be updated when customer responds
+      notes: sentimentAnalysis.observaciones,
+    });
+
+    console.log("✓ Interaction logged to Google Sheets");
 
     // Check if message contains email and update customer profile
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
