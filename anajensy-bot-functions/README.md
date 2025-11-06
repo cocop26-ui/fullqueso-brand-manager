@@ -94,7 +94,7 @@ GCLOUD_PROJECT=fullqueso-bot node create-order-churros.js
 1. Template inicial → Cliente responde
 2. Mensaje 1: Reacción + Pregunta sobre PRODUCTO
 3. Mensaje 2: Pregunta sobre DELIVERY
-4. Mensaje 3: Agradecimiento + Solicitud de EMAIL
+4. Mensaje 3: Agradecimiento + Solicitud de EMAIL + Recordatorio de fullqueso.com
 
 ## 🔐 Seguridad
 
@@ -147,6 +147,7 @@ Firebase Console: https://console.firebase.google.com/project/fullqueso-bot
 - ✅ Backup cada domingo a las 2:00 AM
 - ✅ Retención automática de 8 semanas
 - ✅ Script de restauración completo
+- ✅ Ana menciona fullqueso.com en mensaje final
 - Ana más expresiva con emociones
 - Flujo de 3 mensajes estructurado
 - Template Meta aprobado
