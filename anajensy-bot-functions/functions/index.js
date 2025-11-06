@@ -406,37 +406,102 @@ exports.whatsappWebhook = onRequest({
     // Count previous interactions to determine if we should close conversation
     const numInteracciones = conversaciones.length;
 
-    // Generate response using Claude
-    const contextoCompleto = `Cliente: ${clienteNombre}${contextoPedido}${historialConversacion}
+    // Check if this is a post-sale conversation or a general inquiry
+    // Post-sale: Customer has recent order with seguimiento_enviado = true
+    const esConversacionPostventa = pedidoReciente && pedidoReciente.seguimiento_enviado === true;
+
+    // Check if conversation is completed (3+ messages or email already captured)
+    const encuestaSnapshot = await db.collection("encuestas_postventa")
+        .where("cliente_telefono", "==", clientPhone)
+        .where("encuesta_completada", "==", true)
+        .get();
+    const encuestaCompletada = !encuestaSnapshot.empty;
+
+    // Detect if customer is initiating new conversation outside post-sale flow
+    const mensajeInicial = ["hola", "hello", "buenas", "buenos dias", "buenas tardes", "quiero", "necesito", "pedido", "reclamo"];
+    const esInicioNuevo = !esConversacionPostventa || numInteracciones === 0 || encuestaCompletada;
+    const esMensajePedidoOConsulta = mensajeInicial.some(palabra => messageBody.toLowerCase().includes(palabra));
+
+    let contextoCompleto = "";
+
+    // SCENARIO 1: Customer initiating conversation outside post-sale flow
+    if (esInicioNuevo && esMensajePedidoOConsulta && numInteracciones <= 1) {
+      contextoCompleto = `Cliente: ${clienteNombre}
+Mensaje del cliente: "${messageBody}"
+
+INSTRUCCIONES CRÍTICAS - MENSAJE AUTOMÁTICO DE REDIRECCIÓN:
+
+El cliente está iniciando una conversación FUERA del flujo de seguimiento post-venta.
+
+DEBES responder con este mensaje de redirección (adapta según el caso):
+
+**Si menciona PEDIDO o quiere ORDENAR:**
+"Hola ${clienteNombre}, ¡con gusto! Para hacer tu pedido entra a fullqueso.com, es súper fácil. Para cualquier ayuda escríbenos al +584241476748. ¡Saludos!"
+
+**Si menciona RECLAMO, PROBLEMA o CONSULTA:**
+"Hola ${clienteNombre}, entiendo. Para atenderte mejor, escríbenos al +584241476748 o a atencionalcliente@fullqueso.com. Te ayudaremos enseguida. Un abrazo"
+
+**Si solo saluda (hola, buenas, etc):**
+"Hola ${clienteNombre}, ¿cómo estás? Para pedidos visita fullqueso.com. Para consultas escríbenos al +584241476748 o atencionalcliente@fullqueso.com. ¡Estamos a tu orden!"
+
+REGLAS:
+- 30-40 palabras máximo
+- Tono cálido y profesional venezolano
+- SIEMPRE mencionar fullqueso.com para pedidos
+- SIEMPRE mencionar +584241476748 para atención
+- NO iniciar conversación extendida
+- NO preguntar por feedback o email`;
+
+    // SCENARIO 2: Active post-sale conversation
+    } else if (esConversacionPostventa && !encuestaCompletada && numInteracciones < 3) {
+      contextoCompleto = `Cliente: ${clienteNombre}${contextoPedido}${historialConversacion}
 
 Mensaje del cliente: "${messageBody}"
 
 Número de intercambios previos: ${numInteracciones}
 
-INSTRUCCIONES CRÍTICAS - AGENTE DE ATENCIÓN AL CLIENTE:
+INSTRUCCIONES CRÍTICAS - SEGUIMIENTO POST-VENTA:
 
 1. SOLO HABLAS DE FULL QUESO (pedidos, productos, delivery)
    - Si preguntan del clima, política, chistes, etc: "Para otros asuntos, escríbenos a atencionalcliente@fullqueso.com, vale"
 
 2. MANEJO DE SITUACIONES:
-   - Cliente da feedback → Agradece + SIEMPRE pide email para promociones + DESPÍDETE
-   - Cliente da email → Confirma recepción + DESPÍDETE: "Perfecto, gracias. Un abrazo"
+   - Cliente da feedback → Agradece + SIEMPRE pide email para promociones + menciona fullqueso.com + DESPÍDETE
+   - Cliente da email → Confirma recepción + menciona fullqueso.com + DESPÍDETE: "Perfecto, anotado. Recuerda fullqueso.com para tus próximas compras. ¡Un abrazo!"
    - Cliente da sugerencia → "Vamos a tomar todo en cuenta" + Pide email + DESPÍDETE
-   - Cliente dice "gracias"/"ok"/"listo" → DESPÍDETE: "Para servirte. Saludos"
-   - Pregunta fuera de Full Queso → Redirige a atencionalcliente@fullqueso.com + DESPÍDETE
+   - Cliente dice "gracias"/"ok"/"listo" → DESPÍDETE: "Para servirte. Recuerda fullqueso.com. Saludos"
 
 3. FINALIZACIÓN (${numInteracciones >= 2 ? 'YA ES MOMENTO DE CERRAR' : 'Aún puedes continuar'}):
    ${numInteracciones >= 2 ?
-     '⚠️ YA HUBO 2+ INTERCAMBIOS - DEBES DESPEDIRTE AHORA. Di: "Perfecto [nombre], gracias por tu tiempo. Cualquier cosa, aquí estamos. Un abrazo"' :
-     'Si cliente ya dio feedback O email, despídete. Si no, haz UNA pregunta más y despídete.'}
+     '⚠️ YA HUBO 2+ INTERCAMBIOS - DEBES DESPEDIRTE AHORA. Di: "Perfecto, gracias por tu tiempo. Visita fullqueso.com para tus próximos pedidos. Un abrazo"' :
+     'Si cliente ya dio feedback O email, despídete mencionando fullqueso.com. Si no, haz UNA pregunta más y despídete.'}
 
-4. RESPUESTA (30-40 PALABRAS MÁXIMO - CUENTA LAS PALABRAS):
+4. RESPUESTA (30-40 PALABRAS MÁXIMO):
    - Agradece/confirma lo que dijeron
-   - SIEMPRE pide email si aún no lo has capturado: "¿Puedes enviarnos tu email para promociones?"
-   - DESPÍDETE con tono venezolano cálido
+   - SIEMPRE pide email si aún no lo has capturado
+   - Menciona fullqueso.com al despedirte
    - SÉ BREVE Y CONCISO
 
 Mantén tono profesional venezolano. CAPTURA EMAIL. MÁXIMO 40 PALABRAS.`;
+
+    // SCENARIO 3: Conversation already completed or too many messages
+    } else {
+      contextoCompleto = `Cliente: ${clienteNombre}
+Mensaje del cliente: "${messageBody}"
+
+INSTRUCCIONES - CONVERSACIÓN COMPLETADA:
+
+La encuesta post-venta ya fue completada o hay demasiados mensajes (${numInteracciones}).
+
+Responde amablemente y redirige:
+
+"Hola ${clienteNombre}, gracias por escribir. Para nuevos pedidos visita fullqueso.com. Para consultas escríbenos al +584241476748 o atencionalcliente@fullqueso.com. ¡Saludos!"
+
+30-40 palabras máximo. Tono cálido venezolano.`;
+    }
+
+    console.log(`Scenario detected: ${esInicioNuevo ? 'New inquiry' : esConversacionPostventa ? 'Post-sale active' : 'Completed/Other'}`);
+    console.log(`Interactions: ${numInteracciones}, Survey completed: ${encuestaCompletada}`);
 
     const anthropic = new Anthropic({
       apiKey: CLAUDE_API_KEY,

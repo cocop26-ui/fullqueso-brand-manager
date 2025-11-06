@@ -90,11 +90,30 @@ GCLOUD_PROJECT=fullqueso-bot node create-order-churros.js
 - Empática y profesional
 - Mensajes de 25-40 palabras
 
-### Flujo de Conversación (3 mensajes)
+### Flujo de Conversación Post-Venta (3 mensajes)
 1. Template inicial → Cliente responde
 2. Mensaje 1: Reacción + Pregunta sobre PRODUCTO
 3. Mensaje 2: Pregunta sobre DELIVERY
 4. Mensaje 3: Agradecimiento + Solicitud de EMAIL + Recordatorio de fullqueso.com
+
+### Comunicación Two-Way (Fuera de Post-Venta)
+
+Cuando un cliente escribe sin seguimiento activo o después de completar la encuesta:
+
+**Para nuevos pedidos:**
+- Dirige a fullqueso.com
+- Ejemplo: "Hola, ¡con gusto! Para hacer tu pedido entra a fullqueso.com, es súper fácil. Para cualquier ayuda escríbenos al +584241476748. ¡Saludos!"
+
+**Para consultas o reclamos:**
+- Dirige a WhatsApp de atención: +584241476748
+- O email: atencionalcliente@fullqueso.com
+- Ejemplo: "Hola, entiendo. Para atenderte mejor, escríbenos al +584241476748 o a atencionalcliente@fullqueso.com. Te ayudaremos enseguida. Un abrazo"
+
+**Escenarios manejados:**
+- Cliente inicia conversación sin pedido reciente
+- Cliente escribe después de completar encuesta
+- Cliente saluda o consulta fuera del flujo post-venta
+- Solicitudes de nuevos pedidos, reclamos o ayuda general
 
 ## 🔐 Seguridad
 
@@ -148,6 +167,10 @@ Firebase Console: https://console.firebase.google.com/project/fullqueso-bot
 - ✅ Retención automática de 8 semanas
 - ✅ Script de restauración completo
 - ✅ Ana menciona fullqueso.com en mensaje final
+- ✅ Comunicación two-way inteligente implementada
+- ✅ Redirección automática para pedidos → fullqueso.com
+- ✅ Redirección para consultas → +584241476748 / atencionalcliente@fullqueso.com
+- ✅ Detección automática de contexto (post-venta vs consulta general)
 - Ana más expresiva con emociones
 - Flujo de 3 mensajes estructurado
 - Template Meta aprobado
