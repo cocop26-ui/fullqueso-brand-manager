@@ -82,3 +82,5 @@ secrets/
 # Personal downloads and temporary files
 /Users/*/Downloads/
 *.tmp
+CREDENTIALS.md
+backups/
