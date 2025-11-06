@@ -102,6 +102,40 @@ GCLOUD_PROJECT=fullqueso-bot node create-order-churros.js
 - ✅ Service account keys NO en repo
 - ✅ .gitignore configurado
 
+## 🗄️ Backups
+
+### Backup Automático
+- **Frecuencia:** Cada domingo a las 2:00 AM (Caracas)
+- **Destino:** Google Cloud Storage
+- **Retención:** 8 semanas
+- **Colecciones:** pedidos_bot, clientes_bot, conversaciones_bot, encuestas_postventa
+
+```bash
+# Ver logs de backups
+firebase functions:log --only backupFirestore
+
+# Listar backups en Cloud Storage
+gsutil ls -l gs://fullqueso-bot.appspot.com/backups/
+```
+
+### Backup Manual
+```bash
+cd functions
+GCLOUD_PROJECT=fullqueso-bot node backup-firestore.js
+```
+
+### Restauración
+```bash
+# Descargar backup desde Cloud Storage
+gsutil -m cp -r gs://fullqueso-bot.appspot.com/backups/2025-11-06 ./restore/
+
+# Restaurar
+cd functions
+GCLOUD_PROJECT=fullqueso-bot node restore-firestore.js ./restore/2025-11-06
+```
+
+Ver documentación completa: [BACKUP_GUIDE.md](BACKUP_GUIDE.md)
+
 ## 📈 Monitoreo
 
 Firebase Console: https://console.firebase.google.com/project/fullqueso-bot
@@ -109,6 +143,10 @@ Firebase Console: https://console.firebase.google.com/project/fullqueso-bot
 ## 📝 Changelog
 
 ### 2025-11-06
+- ✅ Sistema de backup automático implementado
+- ✅ Backup cada domingo a las 2:00 AM
+- ✅ Retención automática de 8 semanas
+- ✅ Script de restauración completo
 - Ana más expresiva con emociones
 - Flujo de 3 mensajes estructurado
 - Template Meta aprobado

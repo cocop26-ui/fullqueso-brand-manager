@@ -596,3 +596,133 @@ Mantén tono profesional venezolano. CAPTURA EMAIL. MÁXIMO 40 PALABRAS.`;
     res.status(500).send("Error");
   }
 });
+
+// ============================================================================
+// AUTOMATED BACKUP FUNCTION
+// ============================================================================
+
+/**
+ * Scheduled backup function - runs every Sunday at 2:00 AM (UTC-4 Caracas time)
+ * Exports all Firestore collections to a GCS bucket for disaster recovery
+ */
+exports.backupFirestore = onSchedule({
+  schedule: "0 6 * * 0", // Every Sunday at 6:00 AM UTC (2:00 AM Caracas)
+  timeZone: "America/Caracas",
+  region: "us-central1",
+}, async (event) => {
+  const db = admin.firestore();
+  const storage = admin.storage();
+  const bucket = storage.bucket();
+
+  const timestamp = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const backupFolder = `backups/${timestamp}`;
+
+  console.log(`🗄️  Starting scheduled backup at ${timestamp}`);
+
+  const collections = [
+    "pedidos_bot",
+    "clientes_bot",
+    "conversaciones_bot",
+    "encuestas_postventa"
+  ];
+
+  try {
+    let totalDocs = 0;
+
+    for (const collectionName of collections) {
+      console.log(`  📦 Backing up ${collectionName}...`);
+
+      const snapshot = await db.collection(collectionName).get();
+      const documents = [];
+
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        // Convert Timestamps to ISO strings for JSON compatibility
+        const cleanData = JSON.parse(JSON.stringify(data, (key, value) => {
+          if (value && typeof value === "object" && value._seconds) {
+            return new Date(value._seconds * 1000).toISOString();
+          }
+          return value;
+        }));
+
+        documents.push({id: doc.id, ...cleanData});
+      });
+
+      // Save to Cloud Storage
+      const fileName = `${backupFolder}/${collectionName}.json`;
+      const file = bucket.file(fileName);
+
+      await file.save(JSON.stringify(documents, null, 2), {
+        contentType: "application/json",
+        metadata: {
+          metadata: {
+            backup_date: timestamp,
+            collection: collectionName,
+            document_count: documents.length.toString(),
+          },
+        },
+      });
+
+      totalDocs += documents.length;
+      console.log(`  ✓ ${collectionName}: ${documents.length} documents backed up`);
+    }
+
+    // Create backup manifest
+    const manifest = {
+      backup_date: timestamp,
+      total_documents: totalDocs,
+      collections: collections,
+      status: "completed",
+      timestamp: new Date().toISOString(),
+    };
+
+    const manifestFile = bucket.file(`${backupFolder}/manifest.json`);
+    await manifestFile.save(JSON.stringify(manifest, null, 2), {
+      contentType: "application/json",
+    });
+
+    console.log(`✅ Backup completed: ${totalDocs} documents saved to ${backupFolder}`);
+
+    // Keep only last 8 weeks of backups (delete older ones)
+    await cleanOldBackups(bucket, 8);
+
+  } catch (error) {
+    console.error("❌ Backup failed:", error);
+    // In production, you might want to send an alert email/notification here
+    throw error;
+  }
+});
+
+/**
+ * Helper function to clean up old backups
+ * @param {*} bucket - Cloud Storage bucket
+ * @param {number} weeksToKeep - Number of weeks of backups to retain
+ */
+async function cleanOldBackups(bucket, weeksToKeep = 8) {
+  try {
+    const [files] = await bucket.getFiles({prefix: "backups/"});
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - (weeksToKeep * 7));
+
+    let deletedCount = 0;
+
+    for (const file of files) {
+      // Extract date from path like "backups/2025-11-06/..."
+      const dateMatch = file.name.match(/backups\/(\d{4}-\d{2}-\d{2})/);
+      if (dateMatch) {
+        const fileDate = new Date(dateMatch[1]);
+        if (fileDate < cutoffDate) {
+          await file.delete();
+          deletedCount++;
+        }
+      }
+    }
+
+    if (deletedCount > 0) {
+      console.log(`🗑️  Cleaned up ${deletedCount} old backup files`);
+    }
+  } catch (error) {
+    console.error("⚠️  Error cleaning old backups:", error);
+    // Don't throw - cleaning is non-critical
+  }
+}
