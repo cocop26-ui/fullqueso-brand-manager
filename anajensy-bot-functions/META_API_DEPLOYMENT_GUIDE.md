@@ -120,7 +120,7 @@ The `procesarSeguimientos` function will automatically send messages to customer
 {
   "ticket": "FQ-TEST-123456789",
   "cliente_nombre": "Pedro",
-  "cliente_telefono": "584168542395", // Your test number
+  "cliente_telefono": "584241476748", // Your test number
   "estado": "ENTREGADO",
   "seguimiento_enviado": false,
   "fecha_entregado": <Timestamp: now>,
@@ -144,7 +144,7 @@ firebase functions:log --only procesarSeguimientos
 ```
 ✓ WhatsApp sent successfully via Meta API!
   - Message ID: wamid.xxx
-  - To: +584168542395
+  - To: +584241476748
   - Customer: Pedro
   - Products: Tequeños x12
 ```
@@ -165,7 +165,7 @@ firebase functions:log --only whatsappWebhook
 
 ```
 📨 Incoming WhatsApp message
-Message from: 584168542395
+Message from: 584241476748
 Message: Hola Ana
 ✓ Response sent to customer via Meta API
 ```
@@ -182,7 +182,7 @@ curl -X POST "https://graph.facebook.com/v21.0/805718575964429/messages" \
   -H "Content-Type: application/json" \
   -d '{
     "messaging_product": "whatsapp",
-    "to": "584168542395",
+    "to": "584241476748",
     "type": "text",
     "text": {
       "body": "Prueba de Ana - Full Queso. Este es un mensaje de prueba."
@@ -197,8 +197,8 @@ Expected response:
   "messaging_product": "whatsapp",
   "contacts": [
     {
-      "input": "584168542395",
-      "wa_id": "584168542395"
+      "input": "584241476748",
+      "wa_id": "584241476748"
     }
   ],
   "messages": [
@@ -320,7 +320,7 @@ https://us-central1-fullqueso-bot.cloudfunctions.net/whatsappWebhook
 
 The system automatically handles both Venezuelan and international formats:
 
-- **Venezuelan:** `04168542395` → `584168542395`
+- **Venezuelan:** `04241476748` → `584241476748`
 - **International:** `15556406840` → `15556406840` (unchanged)
 
 ### Firebase Secrets

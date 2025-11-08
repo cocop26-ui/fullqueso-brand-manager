@@ -2,7 +2,7 @@
 
 **Date:** 2025-11-08
 **Your Token:** ✅ Ready
-**Your Phone:** 15551816269
+**Your Phone:** +584241476748 (584241476748)
 
 ---
 
@@ -137,7 +137,7 @@ Create a test order in Firestore Console:
      ```
      ticket: "FQ-TEST-123456789"
      cliente_nombre: "Test User"
-     cliente_telefono: "15551816269"
+     cliente_telefono: "584241476748"
      estado: "ENTREGADO"
      seguimiento_enviado: false
      fecha_entregado: [Timestamp: now]
@@ -148,13 +148,13 @@ Create a test order in Firestore Console:
      ```
 5. Click **Save**
 6. Wait 1-2 minutes
-7. Check WhatsApp on `15551816269` for Ana's message
+7. Check WhatsApp on `+584241476748` for Ana's message
 
 **Expected:** You should receive a personalized message from Ana about the test order
 
 **Test 2: Receive and Reply**
 
-1. Send a WhatsApp message to **+58 416-8542395** from `15551816269`
+1. Send a WhatsApp message to **+58 416-8542395** from `+584241476748`
 2. Say: "Hola Ana"
 3. Wait 2-5 seconds
 4. You should receive Ana's response
@@ -175,7 +175,7 @@ firebase functions:log --only whatsappWebhook --lines 20
 ```
 ✓ WhatsApp sent successfully via Meta API!
   - Message ID: wamid.xxx
-  - To: +15551816269
+  - To: +584241476748
 ```
 
 ---
@@ -229,7 +229,7 @@ firebase deploy --only functions
 
 **Solution:**
 1. Go to Meta Developers → WhatsApp → API Setup
-2. Add `15551816269` to allowed phone numbers
+2. Add `584241476748` to allowed phone numbers
 3. Or wait for business verification to message any number
 
 ### Issue: "No message received on WhatsApp"

@@ -74,7 +74,7 @@ If you want to test messages to YOUR personal WhatsApp:
 2. Your app → WhatsApp → API Setup
 3. Scroll to "To" section
 4. Click "Manage phone number list"
-5. Add your test number: +584168542395
+5. Add your test number: +584241476748
 
 ---
 
@@ -132,7 +132,7 @@ This is your SENDING number. It will:
 
 **You do NOT need +58 416-8542395 to be the business number!**
 
-That number (+584168542395) should be:
+That number (+584241476748) should be:
 - Your personal WhatsApp (keep it)
 - Added as a test recipient (to receive test messages)
 
@@ -226,7 +226,7 @@ curl -X POST https://graph.facebook.com/v21.0/805718575964429/messages \
   -H "Content-Type: application/json" \
   -d '{
     "messaging_product": "whatsapp",
-    "to": "584168542395",
+    "to": "584241476748",
     "type": "text",
     "text": {"body": "Test message from Anajensy bot setup"}
   }'
