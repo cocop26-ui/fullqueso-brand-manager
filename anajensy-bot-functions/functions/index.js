@@ -233,17 +233,38 @@ async function enviarWhatsApp(telefono, mensaje, clienteNombre, productosStr) {
 
     console.log(`Sending WhatsApp via Meta API to: +${telefonoInternacional}`);
 
-    // Send via Meta WhatsApp Cloud API
+    // Send via Meta WhatsApp Cloud API using TEMPLATE
+    // Meta requires approved templates for initiating conversations
     const metaApiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
+    // Use Meta Message Template for initial message
+    // Template name should be created in Meta Business Manager
     const response = await axios.post(
         metaApiUrl,
         {
           messaging_product: "whatsapp",
           to: telefonoInternacional,
-          type: "text",
-          text: {
-            body: mensaje
+          type: "template",
+          template: {
+            name: "anajensy_order_followup",  // Template name in Meta
+            language: {
+              code: "es"  // Spanish
+            },
+            components: [
+              {
+                type: "body",
+                parameters: [
+                  {
+                    type: "text",
+                    text: clienteNombre  // {{1}} - Customer name
+                  },
+                  {
+                    type: "text",
+                    text: productosStr  // {{2}} - Products
+                  }
+                ]
+              }
+            ]
           }
         },
         {
@@ -254,11 +275,12 @@ async function enviarWhatsApp(telefono, mensaje, clienteNombre, productosStr) {
         }
     );
 
-    console.log(`✓ WhatsApp sent successfully via Meta API!`);
+    console.log(`✓ WhatsApp sent successfully via Meta API (Template)!`);
     console.log(`  - Message ID: ${response.data.messages[0].id}`);
     console.log(`  - To: +${telefonoInternacional}`);
     console.log(`  - Customer: ${clienteNombre}`);
     console.log(`  - Products: ${productosStr}`);
+    console.log(`  - Template: anajensy_order_followup`);
 
     return response.data;
   } catch (error) {
