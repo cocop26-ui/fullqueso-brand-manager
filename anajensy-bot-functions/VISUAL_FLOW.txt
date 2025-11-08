@@ -1,0 +1,301 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                   ANA META WHATSAPP - CONVERSATION FLOW                    ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PHASE 1: ORDER PROCESSING (Scheduled Function - Every 1 Minute)         │
+└──────────────────────────────────────────────────────────────────────────┘
+
+    ┌─────────────────┐
+    │  Firestore      │
+    │  pedidos_bot    │◄─── Order Added:
+    │                 │     • Ticket: FQ-TEST-1762621067648
+    │  • ENTREGADO    │     • Customer: Pedro Padilla
+    │  • seguimiento  │     • Phone: 584241476748
+    │    = false      │     • Product: Churros Choco Arequipe x15
+    └────────┬────────┘     • seguimiento_enviado: false
+             │
+             ▼
+    ┌─────────────────┐
+    │ procesarSeguimi│
+    │ entos()        │◄─── Runs every 1 minute
+    │                 │     • Queries ENTREGADO orders
+    │ Line: 90-118   │     • seguimiento_enviado = false
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │ enviarSeguimie │
+    │ nto()          │
+    │                 │     1. Get customer profile
+    │ Line: 120-216  │     2. Build product string
+    └────────┬────────┘     3. Call Claude AI
+             │
+             ▼
+    ┌─────────────────┐
+    │ Claude API      │
+    │ (Sonnet 4)     │     System: ANAJENSY_PROMPT
+    │                 │     Context: Customer + Order details
+    │ Generates       │     Max tokens: 150
+    │ greeting        │
+    └────────┬────────┘
+             │
+             │ (AI message generated but NOT used for template)
+             │
+             ▼
+    ┌─────────────────┐
+    │ enviarWhatsApp│
+    │ ()             │     ⚠️  CRITICAL: Uses TEMPLATE not text
+    │                 │
+    │ Line: 218-295  │     Template: anajensy_order_followup
+    └────────┬────────┘     Parameters:
+             │                • {{1}} = "Pedro Padilla"
+             │                • {{2}} = "Churros Choco Arequipe x15"
+             ▼
+    ┌─────────────────┐
+    │ Meta WhatsApp  │
+    │ Cloud API      │     POST /v21.0/805718575964429/messages
+    │                 │     {
+    │ Template       │       "type": "template",
+    │ Message        │       "template": {
+    └────────┬────────┘         "name": "anajensy_order_followup",
+             │                    "language": {"code": "es"},
+             │                    "components": [...]
+             │                  }
+             │                }
+             ▼
+    ┌─────────────────┐
+    │  📱 PEDRO'S    │
+    │  WHATSAPP      │     Message Received:
+    │                 │     "Hola Pedro Padilla! Gracias por tu
+    │ +584241476748  │      pedido de Churros Choco Arequipe x15.
+    └─────────────────┘      ¿Cómo estuvo todo? Cuéntame qué tal te fue."
+
+    Database Updates:
+    • conversaciones_bot: New record with Ana's message
+    • pedidos_bot: seguimiento_enviado = true
+
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PHASE 2: CUSTOMER REPLIES (Webhook - Real-time)                         │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ INTERACTION 1: Initial Feedback                                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+    ┌─────────────────┐
+    │  📱 PEDRO      │
+    │  Types...      │     "Hola Ana! Todo estuvo excelente, gracias"
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │ Meta WhatsApp  │
+    │ Sends Webhook  │     POST to Firebase Function URL
+    │                 │     {
+    │ POST Request   │       "entry": [{
+    └────────┬────────┘         "changes": [{
+             │                    "value": {
+             │                      "messages": [{
+             │                        "from": "584241476748",
+             ▼                        "text": {"body": "Hola Ana..."}
+    ┌─────────────────┐           }]
+    │ whatsappWebhook│         }]
+    │ ()             │       }]
+    │                 │     }
+    │ Line: 341-700  │
+    └────────┬────────┘
+             │
+             ▼
+    Parse Message:
+    • Phone: 584241476748
+    • Body: "Hola Ana! Todo estuvo excelente, gracias"
+    • Name: "Pedro Padilla"
+             │
+             ▼
+    ┌─────────────────┐
+    │ Load Context   │     1. Get customer from clientes_bot
+    │                 │     2. Get recent order from pedidos_bot
+    │ Queries:       │     3. Get conversation history
+    │ - clientes_bot │     4. Count interactions (numInteracciones = 1)
+    │ - pedidos_bot  │
+    │ - conversaciones│     Scenario: POST-SALE ACTIVE
+    └────────┬────────┘     (esConversacionPostventa = true)
+             │
+             ▼
+    ┌─────────────────┐
+    │ Claude API      │     System: ANAJENSY_PROMPT
+    │ (Sonnet 4)     │     Context:
+    │                 │       • Conversation history
+    │ Generate       │       • Customer message
+    │ Response       │       • numInteracciones = 1
+    └────────┬────────┘       • Instructions: Ask about PRODUCT
+             │
+             ▼
+    AI Response:
+    "¡Ay qué fino Pedro! Me alegra. ¿Los churros estaban calientitos?
+     ¿Y el choco arequipe en su punto? Cuéntame"
+             │
+             ▼
+    ┌─────────────────┐
+    │ Meta API       │     POST /messages
+    │ Send Freeform  │     {
+    │ Text           │       "type": "text",
+    │                 │       "text": {"body": "¡Ay qué fino Pedro..."}
+    │ (24hr window   │     }
+    │  is active)    │
+    └────────┬────────┘     ✅ Freeform allowed within conversation
+             │
+             ▼
+    ┌─────────────────┐
+    │ analyzeSentiment│    Claude API call to analyze:
+    │ ()             │     • producto: "positivo"
+    │                 │     • delivery: "positivo"
+    │ Line: 297-338  │     • clienteFrecuente: "desconocido"
+    └────────┬────────┘     • observaciones: "Cliente satisfecho"
+             │
+             ▼
+    Database Updates:
+    • conversaciones_bot: Save customer message + Ana response
+    • encuestas_postventa: Create/update survey record
+             │
+             ▼
+    ┌─────────────────┐
+    │  📱 PEDRO      │     Message Received:
+    │  WHATSAPP      │     "¡Ay qué fino Pedro! Me alegra.
+    │                 │      ¿Los churros estaban calientitos?
+    │ Receives Ana's │      ¿Y el choco arequipe en su punto? Cuéntame"
+    └─────────────────┘
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ INTERACTION 2: Product Feedback                                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+    ┌─────────────────┐
+    │  📱 PEDRO      │     "Sí, llegaron perfectos! El arequipe
+    │  Types...      │      delicioso y los churros crocantes"
+    └────────┬────────┘
+             │
+             ▼
+    [Same webhook flow as Interaction 1]
+             │
+             ▼
+    Context:
+    • numInteracciones = 2
+    • Scenario: POST-SALE ACTIVE
+    • Instructions: numInteracciones >= 2, MUST CLOSE
+             │
+             ▼
+    AI Response:
+    "Perfecto! Me alegra. ¿Me das tu email para enviarte promociones?
+     Recuerda fullqueso.com para tus próximos pedidos. Un abrazo"
+             │
+             ▼
+    ┌─────────────────┐
+    │  📱 PEDRO      │     Message Received:
+    │  WHATSAPP      │     "Perfecto! Me alegra. ¿Me das tu email..."
+    └─────────────────┘
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ INTERACTION 3: Email Capture                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+    ┌─────────────────┐
+    │  📱 PEDRO      │     "pedro@fullqueso.com"
+    │  Types email   │
+    └────────┬────────┘
+             │
+             ▼
+    [Same webhook flow]
+             │
+             ▼
+    Email Detection:
+    • Pattern match: /\S+@\S+\.\S+/
+    • Extracted: "pedro@fullqueso.com"
+             │
+             ▼
+    AI Response:
+    "Perfecto, anotado. Recuerda fullqueso.com para tus próximas
+     compras. ¡Un abrazo!"
+             │
+             ▼
+    Database Updates:
+    • clientes_bot:
+        email: "pedro@fullqueso.com"
+    • encuestas_postventa:
+        cliente_email: "pedro@fullqueso.com"
+        encuesta_completada: true
+        numero_intercambios: 3
+    • Google Sheets: Export survey results
+             │
+             ▼
+    ┌─────────────────┐
+    │  📱 PEDRO      │     Message Received:
+    │  WHATSAPP      │     "Perfecto, anotado. Recuerda fullqueso.com..."
+    │                 │
+    │  ✅ Survey     │
+    │  COMPLETED!    │
+    └─────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ FINAL DATABASE STATE                                                     │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────┐
+│  pedidos_bot          │
+│                       │  • seguimiento_enviado: true ✅
+│  FQ-TEST-1762621...  │  • seguimiento_fecha: 2025-11-08
+└───────────────────────┘
+
+┌───────────────────────┐
+│  conversaciones_bot   │
+│                       │  Record 1: Ana's template
+│  3 records            │  Record 2: Customer reply + Ana response (product)
+│                       │  Record 3: Email capture + Ana goodbye
+└───────────────────────┘
+
+┌───────────────────────┐
+│  encuestas_postventa  │
+│                       │  • sentimiento_producto: "positivo"
+│  1 record             │  • sentimiento_delivery: "positivo"
+│                       │  • cliente_email: "pedro@fullqueso.com"
+│  ✅ COMPLETED         │  • encuesta_completada: true
+└───────────────────────┘
+
+┌───────────────────────┐
+│  clientes_bot         │
+│                       │  • nombre: "Pedro Padilla"
+│  Pedro Padilla        │  • telefono: "584241476748"
+│                       │  • email: "pedro@fullqueso.com" ✅
+│  Profile updated      │  • total_pedidos: 1
+└───────────────────────┘
+
+┌───────────────────────┐
+│  Google Sheets        │
+│                       │  Survey exported with:
+│  KPI Spreadsheet      │  • Customer feedback
+│                       │  • Product sentiment
+│  Row added ✅         │  • Delivery sentiment
+└───────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+KEY POINTS:
+
+✅ TEMPLATE used for initial message (required by Meta)
+✅ FREEFORM text used for replies (within 24hr window)
+✅ AI generates contextual responses based on conversation history
+✅ Sentiment analysis on every customer message
+✅ Complete survey data captured in Firestore
+✅ Email extracted and saved
+✅ Conversation automatically closes after 3 interactions
+✅ Data exported to Google Sheets
+
+⚠️  PREREQUISITE: Template "anajensy_order_followup" must be APPROVED in Meta
+
+═══════════════════════════════════════════════════════════════════════════
