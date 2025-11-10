@@ -18,7 +18,7 @@ async function createTestOrder() {
     const testOrder = {
       ticket: 'TEST-001',
       pedido_id: 'test_order_' + Date.now(),
-      cliente_telefono: '584141476758', // REPLACE WITH YOUR WHATSAPP NUMBER
+      cliente_telefono: '584241476748', // REPLACE WITH YOUR WHATSAPP NUMBER
       cliente_nombre: 'Test Customer',
       productos: [
         {
@@ -32,8 +32,9 @@ async function createTestOrder() {
       ],
       tipo: 'delivery',
       ubicacion: 'La Florida, Caracas',
-      estado: 'VERIFICADO',
+      estado: 'ENTREGADO',
       fecha_verificado: admin.firestore.Timestamp.now(),
+      fecha_entregado: admin.firestore.Timestamp.now(),
       seguimiento_enviado: false
     };
 

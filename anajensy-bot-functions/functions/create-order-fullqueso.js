@@ -41,8 +41,9 @@ async function createTestOrder() {
       ],
       tipo: 'delivery',
       ubicacion: 'Caracas',
-      estado: 'VERIFICADO',
+      estado: 'ENTREGADO',
       fecha_verificado: admin.firestore.Timestamp.now(),
+      fecha_entregado: admin.firestore.Timestamp.now(),
       seguimiento_enviado: false
     };
 
@@ -69,8 +70,8 @@ async function createTestOrder() {
     console.log('╚════════════════════════════════════════════════════════════════╝');
     console.log('');
     console.log('⏰ Within 1 minute, the function will:');
-    console.log('   1. Find this VERIFICADO order');
-    console.log('   2. Generate personalized message from Ana');
+    console.log('   1. Find this ENTREGADO order');
+    console.log('   2. Generate personalized follow-up message from Ana');
     console.log('   3. Send WhatsApp to Pedro at +58 424-1476748');
     console.log('');
     console.log('📱 Check Pedro\'s WhatsApp in ~1 minute!');
