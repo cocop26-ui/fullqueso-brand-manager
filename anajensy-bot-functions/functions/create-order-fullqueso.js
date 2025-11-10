@@ -35,7 +35,7 @@ async function createTestOrder() {
       cliente_nombre: 'Pedro',
       productos: [
         {
-          nombre: '20 Tequeños',
+          nombre: 'PartyBox Tequeños (50 unidades)',
           cantidad: 1
         }
       ],
@@ -53,7 +53,7 @@ async function createTestOrder() {
     console.log('  Ticket:', orderData.ticket);
     console.log('  Customer: Pedro');
     console.log('  Phone: +58 424-1476748');
-    console.log('  Products: 20 Tequeños');
+    console.log('  Products:', orderData.productos.map(p => p.nombre).join(', '));
 
     // Create customer profile
     await db.collection('clientes_bot').doc('584241476748').set({
