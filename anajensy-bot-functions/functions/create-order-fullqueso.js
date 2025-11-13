@@ -26,16 +26,16 @@ const db = admin.firestore();
 
 async function createTestOrder() {
   try {
-    console.log('Creating test order for Pedro in fullqueso-bot project...');
+    console.log('Creating test order for María Andreína in fullqueso-bot project...');
 
     const orderData = {
-      ticket: 'FQ-TEST-PEDRO-' + Date.now(),
-      pedido_id: 'test_pedro_' + Date.now(),
-      cliente_telefono: '584241476748',
-      cliente_nombre: 'Pedro',
+      ticket: 'FQ-TEST-MARIA-' + Date.now(),
+      pedido_id: 'test_maria_' + Date.now(),
+      cliente_telefono: '584243732864',
+      cliente_nombre: 'María Andreína',
       productos: [
         {
-          nombre: 'PartyBox Tequeños (50 unidades)',
+          nombre: 'Lonchera de 20 Tequeños',
           cantidad: 1
         }
       ],
@@ -51,16 +51,16 @@ async function createTestOrder() {
     console.log('✅ Order created successfully!');
     console.log('  Order ID:', orderRef.id);
     console.log('  Ticket:', orderData.ticket);
-    console.log('  Customer: Pedro');
-    console.log('  Phone: +58 424-1476748');
+    console.log('  Customer: María Andreína');
+    console.log('  Phone: +58 424-3732864');
     console.log('  Products:', orderData.productos.map(p => p.nombre).join(', '));
 
     // Create customer profile
-    await db.collection('clientes_bot').doc('584241476748').set({
-      nombre: 'Pedro',
-      telefono: '584241476748',
-      total_pedidos: 3,
-      productos_favoritos: ['CHURROS', 'Café']
+    await db.collection('clientes_bot').doc('584243732864').set({
+      nombre: 'María Andreína',
+      telefono: '584243732864',
+      total_pedidos: 1,
+      productos_favoritos: ['Tequeños']
     });
     console.log('✅ Customer profile created');
 
@@ -72,9 +72,9 @@ async function createTestOrder() {
     console.log('⏰ Within 1 minute, the function will:');
     console.log('   1. Find this ENTREGADO order');
     console.log('   2. Generate personalized follow-up message from Ana');
-    console.log('   3. Send WhatsApp to Pedro at +58 424-1476748');
+    console.log('   3. Send WhatsApp to María Andreína at +58 424-3732864');
     console.log('');
-    console.log('📱 Check Pedro\'s WhatsApp in ~1 minute!');
+    console.log('📱 Check María Andreína\'s WhatsApp in ~1 minute!');
 
     process.exit(0);
   } catch (error) {
